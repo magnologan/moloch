@@ -26,7 +26,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include "moloch.h"
-#include "nids.h"
 #include "bsb.h"
 
 extern MolochConfig_t        config;
@@ -92,7 +91,7 @@ typedef struct wiseitem {
     char                 *key;
 
     uint32_t              loadTime;
-    short                 sessionsSize;
+    int                   sessionsSize;
     short                 numSessions;
     short                 numOps;
     char                  type;
@@ -114,8 +113,11 @@ typedef struct wiserequest {
 
 typedef HASH_VAR(h_, WiseItemHash_t, WiseItemHead_t, 199337);
 
-WiseItemHash_t itemHash[4];
-WiseItemHead_t itemList[4];
+static WiseItemHash_t itemHash[4];
+static WiseItemHead_t itemList[4];
+
+static MOLOCH_LOCK_DEFINE(itemHash);
+static MOLOCH_LOCK_DEFINE(itemList);
 
 /******************************************************************************/
 int wise_item_cmp(const void *keyv, const void *elementv)
@@ -182,7 +184,7 @@ void wise_process_ops(MolochSession_t *session, WiseItem_t *wi)
         switch (config.fields[op->fieldPos]->type) {
         case  MOLOCH_FIELD_TYPE_INT_HASH:
             if (op->fieldPos == tagsField) {
-                moloch_nids_add_tag(session, op->str);
+                moloch_session_add_tag(session, op->str);
                 continue;
             }
             // Fall Thru
@@ -214,13 +216,23 @@ void wise_free_ops(WiseItem_t *wi)
     wi->ops = NULL;
 }
 /******************************************************************************/
-void wise_free_item(WiseItem_t *wi)
+void wise_free_item(WiseItem_t *wi, gboolean needLock)
 {
     int i;
+
+
+    MOLOCH_LOCK(itemHash);
     HASH_REMOVE(wih_, itemHash[(int)wi->type], wi);
+    MOLOCH_UNLOCK(itemHash);
     if (wi->sessions) {
         for (i = 0; i < wi->numSessions; i++) {
-            moloch_nids_decr_outstanding(wi->sessions[i]);
+            if (needLock) {
+                MOLOCH_LOCK(wi->sessions[i]->lock);
+                if (moloch_session_decr_outstanding(wi->sessions[i]))
+                    MOLOCH_UNLOCK(wi->sessions[i]->lock);
+            } else {
+                moloch_session_decr_outstanding(wi->sessions[i]);
+            }
         }
         g_free(wi->sessions);
     }
@@ -229,7 +241,7 @@ void wise_free_item(WiseItem_t *wi)
     MOLOCH_TYPE_FREE(WiseItem_t, wi);
 }
 /******************************************************************************/
-void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
+void wise_cb(int code, unsigned char *data, int data_len, gpointer uw)
 {
 
     BSB             bsb;
@@ -246,7 +258,7 @@ void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
 
     if (BSB_IS_ERROR(bsb) || ver != 0) {
         for (i = 0; i < request->numItems; i++) {
-            wise_free_item(request->items[i]);
+            wise_free_item(request->items[i], code != 500);
         }
         MOLOCH_TYPE_FREE(WiseRequest_t, request);
         return;
@@ -314,23 +326,29 @@ void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
 
         int s;
         for (s = 0; s < wi->numSessions; s++) {
+            if (code != 500)
+                MOLOCH_LOCK(wi->sessions[s]->lock);
             wise_process_ops(wi->sessions[s], wi);
-            moloch_nids_decr_outstanding(wi->sessions[s]);
+            if (moloch_session_decr_outstanding(wi->sessions[s]) && code != 500)
+                MOLOCH_UNLOCK(wi->sessions[s]->lock);
         }
         g_free(wi->sessions);
         wi->sessions = 0;
         wi->numSessions = 0;
 
+        MOLOCH_LOCK(itemList);
         DLL_PUSH_HEAD(wil_, &itemList[(int)wi->type], wi);
         // Cache needs to be reduced
         if (itemList[(int)wi->type].wil_count > maxCache) {
             DLL_POP_TAIL(wil_, &itemList[(int)wi->type], wi);
-            wise_free_item(wi);
+            wise_free_item(wi, TRUE);
         }
+        MOLOCH_UNLOCK(itemList);
     }
     MOLOCH_TYPE_FREE(WiseRequest_t, request);
 }
 /******************************************************************************/
+// session should already be locked
 void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, int type)
 {
     static int lookups = 0;
@@ -348,15 +366,20 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
     stats[type][INTEL_STAT_LOOKUP]++;
 
     WiseItem_t *wi;
+
+    MOLOCH_LOCK(itemHash);
     HASH_FIND(wih_, itemHash[type], value, wi);
+    MOLOCH_UNLOCK(itemHash);
 
     if (wi) {
         // Already being looked up
         if (wi->sessions) {
-            if (wi->numSessions < wi->sessionsSize) {
-                wi->sessions[wi->numSessions++] = session;
-                moloch_nids_incr_outstanding(session);
+            if (wi->numSessions >= wi->sessionsSize) {
+                wi->sessionsSize *= 1.5;
+                wi->sessions = realloc(wi->sessions, sizeof(MolochSession_t *) * wi->sessionsSize);
             }
+            wi->sessions[wi->numSessions++] = session;
+            moloch_session_incr_outstanding(session);
             stats[type][INTEL_STAT_INPROGRESS]++;
             return;
         }
@@ -371,7 +394,9 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
         }
 
         /* Had it in cache, but it is too old */
+        MOLOCH_LOCK(itemList);
         DLL_REMOVE(wil_, &itemList[type], wi);
+        MOLOCH_UNLOCK(itemList);
         wise_free_ops(wi);
     } else {
         // Know nothing about it
@@ -379,12 +404,15 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
         wi->key          = g_strdup(value);
         wi->type         = type;
         wi->sessionsSize = 20;
+
+        MOLOCH_LOCK(itemHash);
         HASH_ADD(wih_, itemHash[type], wi->key, wi);
+        MOLOCH_UNLOCK(itemHash);
     }
 
     wi->sessions = malloc(sizeof(MolochSession_t *) * wi->sessionsSize);
     wi->sessions[wi->numSessions++] = session;
-    moloch_nids_incr_outstanding(session);
+    moloch_session_incr_outstanding(session);
 
     stats[type][INTEL_STAT_REQUEST]++;
 
@@ -396,6 +424,7 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
     request->items[request->numItems++] = wi;
 }
 /******************************************************************************/
+// session should already be locked
 void wise_lookup_domain(MolochSession_t *session, WiseRequest_t *request, char *domain)
 {
     unsigned char *end = (unsigned char*)domain;
@@ -444,6 +473,7 @@ void wise_lookup_domain(MolochSession_t *session, WiseRequest_t *request, char *
         *colon = ':';
 }
 /******************************************************************************/
+// session should already be locked
 void wise_lookup_ip(MolochSession_t *session, WiseRequest_t *request, uint32_t ip)
 {
     char ipstr[18];
@@ -454,15 +484,19 @@ void wise_lookup_ip(MolochSession_t *session, WiseRequest_t *request, uint32_t i
 }
 /******************************************************************************/
 static WiseRequest_t *iRequest = 0;
+static MOLOCH_LOCK_DEFINE(iRequest);
 static char          *iBuf = 0;
 /******************************************************************************/
-gboolean wise_flush(gpointer UNUSED(user_data))
+gboolean wise_flush(gpointer user_data)
 {
+    if (user_data)
+        MOLOCH_LOCK(iRequest);
+
     if (!iRequest || iRequest->numItems == 0)
-        return TRUE;
+        goto cleanup;
 
     inflight += iRequest->numItems;
-    if (moloch_http_send(wiseService, "POST", "/get", 4, iBuf, BSB_LENGTH(iRequest->bsb), NULL, TRUE, wise_cb, iRequest) != 0) {
+    if (moloch_http_send(wiseService, "POST", "/get", 4, iBuf, BSB_LENGTH(iRequest->bsb), NULL, TRUE, 0, wise_cb, iRequest) != 0) {
         LOG("Wise - request failed %p for %d items", iRequest, iRequest->numItems);
         wise_cb(500, NULL, 0, iRequest);
     }
@@ -470,14 +504,19 @@ gboolean wise_flush(gpointer UNUSED(user_data))
     iRequest = 0;
     iBuf     = 0;
 
+cleanup:
+    if (user_data)
+        MOLOCH_UNLOCK(iRequest);
+
     return TRUE;
 }
 /******************************************************************************/
-
+// session should already be locked
 void wise_plugin_pre_save(MolochSession_t *session, int UNUSED(final))
 {
     MolochString_t *hstring;
 
+    MOLOCH_LOCK(iRequest);
     if (!iRequest) {
         iRequest = MOLOCH_TYPE_ALLOC(WiseRequest_t);
         iBuf = moloch_http_get_buffer(0xffff);
@@ -547,6 +586,7 @@ void wise_plugin_pre_save(MolochSession_t *session, int UNUSED(final))
     if (iRequest->numItems > 128) {
         wise_flush(0);
     }
+    MOLOCH_UNLOCK(iRequest);
 }
 /******************************************************************************/
 void wise_plugin_exit()
@@ -556,7 +596,10 @@ void wise_plugin_exit()
 /******************************************************************************/
 uint32_t wise_plugin_outstanding()
 {
-    return inflight + (iRequest?iRequest->numItems:0);
+    MOLOCH_LOCK(iRequest);
+    int count = inflight + (iRequest?iRequest->numItems:0) + moloch_http_queue_length(wiseService);
+    MOLOCH_UNLOCK(iRequest);
+    return count;
 }
 /******************************************************************************/
 void moloch_plugin_init()
@@ -615,6 +658,6 @@ void moloch_plugin_init()
         HASH_INIT(wih_, itemHash[h], moloch_string_hash, wise_item_cmp);
         DLL_INIT(wil_, &itemList[h]);
     }
-    g_timeout_add_seconds( 1, wise_flush, 0);
+    g_timeout_add_seconds( 1, wise_flush, (gpointer)1);
     wise_load_fields();
 }

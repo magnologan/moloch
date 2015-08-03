@@ -46,7 +46,7 @@ void writer_inplace_exit()
 {
 }
 /******************************************************************************/
-void writer_inplace_create(char *filename)
+void writer_inplace_create(const MolochPacket_t *packet, char *filename)
 {
     if (config.dryRun) {
         outputFileName = "dryrun.pcap";
@@ -57,18 +57,18 @@ void writer_inplace_create(char *filename)
 
     fstat(fileno(inputFile), &st);
 
-    outputFileName = moloch_db_create_file(nids_last_pcap_header->ts.tv_sec, filename, st.st_size, 1, &outputId);
+    outputFileName = moloch_db_create_file(packet->ts.tv_sec, filename, st.st_size, 1, &outputId);
 }
 
 /******************************************************************************/
 void
-writer_inplace_write(const struct pcap_pkthdr *h, const u_char *UNUSED(sp), uint32_t *fileNum, uint64_t *filePos)
+writer_inplace_write(const MolochPacket_t *packet, uint32_t *fileNum, uint64_t *filePos)
 {
     if (!outputFileName)
-        writer_inplace_create(inputFilename);
+        writer_inplace_create(packet, inputFilename);
 
     *fileNum = outputId;
-    *filePos = ftell(inputFile) - 16 - h->caplen;
+    *filePos = packet->filepos;
 }
 /******************************************************************************/
 char *

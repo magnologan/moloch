@@ -188,11 +188,11 @@ my ($cmd) = @_;
 
         print ("Loading PCAP\n");
 
-        my $cmd = "../capture/moloch-capture -c config.test.ini -n test -R pcap";
+        my $cmd = "../capture/moloch-capture -c config.test.ini -n test -R pcap --flush";
         if (!$main::debug) {
             $cmd .= " 2>&1 1>/dev/null";
         } else {
-            $cmd .= " --debug";
+            $cmd .= " --debug 2>&1 1>/tmp/moloch.capture";
         }
 
 

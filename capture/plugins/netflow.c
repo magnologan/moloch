@@ -30,7 +30,6 @@
 #include <errno.h>
 #include "moloch.h"
 #include "bsb.h"
-#include "nids.h"
 
 extern struct timeval initialPacket;
 

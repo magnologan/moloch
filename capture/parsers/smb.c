@@ -518,7 +518,7 @@ int smb_parser(MolochSession_t *session, void *uw, const unsigned char *data, in
 
         if (BSB_REMAINING(bsb) > 0 && BSB_WORK_PTR(bsb) != (unsigned char *)buf) {
 #ifdef SMBDEBUG
-            LOG("  Moving data %ld %s", BSB_REMAINING(bsb), moloch_friendly_session_id(session->protocol, session->addr1, session->port1, session->addr2, session->port2));
+            LOG("  Moving data %ld %s", BSB_REMAINING(bsb), moloch_session_id_string(session->protocol, session->addr1, session->port1, session->addr2, session->port2));
 #endif
             if (BSB_REMAINING(bsb) > MAX_SMB_BUFFER) {
                 LOG("ERROR - Not enough room for SMB packet %ld", BSB_REMAINING(bsb));
@@ -544,10 +544,10 @@ void smb_classify(MolochSession_t *session, const unsigned char *data, int UNUSE
     if (data[4] != 0xff && data[4] != 0xfe)
         return;
 
-    if (moloch_nids_has_protocol(session, "smb"))
+    if (moloch_session_has_protocol(session, "smb"))
         return;
 
-    moloch_nids_add_protocol(session, "smb");
+    moloch_session_add_protocol(session, "smb");
 
     SMBInfo_t            *smb          = MOLOCH_TYPE_ALLOC0(SMBInfo_t);
 

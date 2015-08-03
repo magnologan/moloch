@@ -29,7 +29,6 @@
 #include <ctype.h>
 #include "patricia.h"
 #include "moloch.h"
-#include "nids.h"
 
 
 /******************************************************************************/
@@ -126,7 +125,7 @@ void tagger_process_match(MolochSession_t *session, GPtrArray *infos)
         TaggerInfo_t *info = g_ptr_array_index(infos, f);
         TaggerFile_t *file = info->file;
         for (t = 0; file->tags[t]; t++) {
-            moloch_nids_add_tag(session, file->tags[t]);
+            moloch_session_add_tag(session, file->tags[t]);
         }
         TaggerOp_t *op;
         DLL_FOREACH(o_, &info->ops, op) {
@@ -137,7 +136,7 @@ void tagger_process_match(MolochSession_t *session, GPtrArray *infos)
             case  MOLOCH_FIELD_TYPE_IP:
             case  MOLOCH_FIELD_TYPE_IP_HASH:
                 if (op->fieldPos == tagsField) {
-                    moloch_nids_add_tag(session, op->str);
+                    moloch_session_add_tag(session, op->str);
                 } else {
                     moloch_field_int_add(op->fieldPos, session, op->strLenOrInt);
                 }
@@ -588,7 +587,7 @@ void tagger_load_file(TaggerFile_t *file)
 
     key_len = snprintf(key, sizeof(key), "/tagger/file/%s/_source", file->str);
 
-    moloch_http_send(esServer, "GET", key, key_len, NULL, 0, NULL, FALSE, tagger_load_file_cb, file);
+    moloch_http_send(esServer, "GET", key, key_len, NULL, 0, NULL, FALSE, 0, tagger_load_file_cb, file);
 }
 /******************************************************************************/
 /*
@@ -666,7 +665,7 @@ gboolean tagger_fetch_files (gpointer sync)
         tagger_fetch_files_cb(200, datacopy, data_len, NULL);
         g_free(datacopy);
     } else {
-        moloch_http_send(esServer, "GET", key, key_len, NULL, 0, NULL, FALSE, tagger_fetch_files_cb, NULL);
+        moloch_http_send(esServer, "GET", key, key_len, NULL, 0, NULL, FALSE, 10, tagger_fetch_files_cb, NULL);
     }
 
     return TRUE;

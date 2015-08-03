@@ -1,7 +1,7 @@
 /******************************************************************************/
 /* plugins.c  -- Functions dealing with plugins
  *
- * Copyright 2012-2014 AOL Inc. All rights reserved.
+ * Copyright 2012-2015 AOL Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this Software except in compliance with the License.
@@ -22,7 +22,6 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <ctype.h>
-#include "glib.h"
 #include "gmodule.h"
 #include "moloch.h"
 
@@ -68,11 +67,15 @@ HASH_VAR(p_, plugins, MolochPlugin_t, 11);
 void moloch_plugins_init()
 {
     HASH_INIT(p_, plugins, moloch_string_hash, moloch_string_cmp);
+}
+
+/******************************************************************************/
+void moloch_plugins_load(char **plugins) {
 
     if (!config.pluginsDir)
         return;
 
-    if (!config.plugins)
+    if (!plugins)
         return;
 
     if (!g_module_supported ()) {
@@ -80,10 +83,12 @@ void moloch_plugins_init()
         return;
     }
 
+    moloch_add_can_quit((MolochCanQuitFunc)moloch_plugins_outstanding);
+
     int         i;
 
-    for (i = 0; config.plugins[i]; i++) {
-        const char *name = config.plugins[i];
+    for (i = 0; plugins[i]; i++) {
+        const char *name = plugins[i];
 
         int d;
         GModule *plugin = 0;
@@ -318,13 +323,13 @@ void moloch_plugins_cb_new(MolochSession_t *session)
     );
 }
 /******************************************************************************/
-void moloch_plugins_cb_tcp(MolochSession_t *session, struct tcp_stream *a_tcp)
+void moloch_plugins_cb_tcp(MolochSession_t *session, unsigned char *data, int len)
 {
     MolochPlugin_t *plugin;
 
     HASH_FORALL(p_, plugins, plugin,
         if (plugin->tcpFunc)
-            plugin->tcpFunc(session, a_tcp);
+            plugin->tcpFunc(session, data, len);
     );
 }
 /******************************************************************************/

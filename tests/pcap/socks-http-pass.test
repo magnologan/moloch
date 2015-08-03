@@ -43,8 +43,8 @@
             "a1" : "10.180.156.185",
             "fb2" : "05ff",
             "db1" : 4,
-            "mac2-term-cnt" : 1,
             "by1" : 412,
+            "mac2-term-cnt" : 1,
             "p2" : 1080,
             "mac1-term-cnt" : 1,
             "psl" : [
@@ -119,14 +119,14 @@
             "lpd" : 1386090528547,
             "fp" : 1386090528,
             "pa" : 14,
+            "tacnt" : 1,
             "sl" : 8,
             "fb1" : "0503000102010874",
-            "tacnt" : 1,
             "a1" : "10.180.156.185",
             "fb2" : "050201ff",
             "db1" : 24,
-            "mac2-term-cnt" : 1,
             "by1" : 564,
+            "mac2-term-cnt" : 1,
             "p2" : 1080,
             "mac1-term-cnt" : 1,
             "psl" : [
@@ -168,10 +168,10 @@
             "socksuser" : "testuser",
             "db2" : 1605,
             "db" : 1785,
+            "socksip" : "93.184.216.119",
             "mac2-term" : [
                "00:13:72:c4:f1:e1"
             ],
-            "socksip" : "93.184.216.119",
             "no" : "test",
             "ho" : [
                "www.example.com"
@@ -270,14 +270,14 @@
                "http:header:user-agent"
             ],
             "a1" : "10.180.156.185",
-            "fb2" : "05020100",
+            "fb2" : "0502010005000001",
             "db1" : 180,
             "rirsocksip" : "RIPE",
             "hmd5" : [
                "09b9c392dc1f6e914cea287cb6be34b0"
             ],
-            "mac2-term-cnt" : 1,
             "by1" : 984,
+            "mac2-term-cnt" : 1,
             "hh1cnt" : 3,
             "assocksip" : "AS15133 EdgeCast Networks, Inc.",
             "p2" : 1080,

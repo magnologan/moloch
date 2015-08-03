@@ -34,8 +34,6 @@ typedef struct {
 
 extern unsigned char    moloch_char_to_hexstr[256][3];
 
-static GChecksum       *checksum;
-
 /******************************************************************************/
 void
 tls_certinfo_process(MolochCertInfo_t *ci, BSB *bsb)
@@ -260,6 +258,8 @@ uint64_t tls_parse_time(int tag, unsigned char* value, int len)
 /******************************************************************************/
 void tls_process_server_certificate(MolochSession_t *session, const unsigned char *data, int len)
 {
+static __thread GChecksum *checksum;
+
     BSB cbsb;
 
     BSB_INIT(cbsb, data, len);
@@ -285,6 +285,9 @@ void tls_process_server_certificate(MolochSession_t *session, const unsigned cha
 
         guchar digest[20];
         gsize  len = sizeof(digest);
+
+        if (!checksum)
+            checksum = g_checksum_new(G_CHECKSUM_SHA1);
 
         g_checksum_update(checksum, cdata+3, clen);
         g_checksum_get_digest(checksum, digest, &len);
@@ -574,7 +577,7 @@ void tls_classify(MolochSession_t *session, const unsigned char *data, int len, 
     if (len < 6 || data[2] > 0x03)
         return;
 
-    if (moloch_nids_has_protocol(session, "tls"))
+    if (moloch_session_has_protocol(session, "tls"))
         return;
 
 
@@ -584,7 +587,7 @@ void tls_classify(MolochSession_t *session, const unsigned char *data, int len, 
      * 1 Message Type 1 - Client Hello, 2 Server Hello
      */
     if (data[2] <= 0x03 && (data[5] == 1 || data[5] == 2)) {
-        moloch_nids_add_protocol(session, "tls");
+        moloch_session_add_protocol(session, "tls");
 
         TLSInfo_t  *tls = MOLOCH_TYPE_ALLOC(TLSInfo_t);
         tls->len        = 0;
@@ -714,7 +717,5 @@ void moloch_parser_init()
         NULL);
 
     moloch_parsers_classifier_register_tcp("tls", 0, (unsigned char*)"\x16\x03", 2, tls_classify);
-
-    checksum = g_checksum_new(G_CHECKSUM_SHA1);
 }
 

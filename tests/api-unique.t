@@ -23,7 +23,7 @@ my ($param, $multi) = @_;
 }
 
 my $pwd = getcwd() . "/pcap";
-my $files = uri_escape("(file=$pwd/socks-http-example.pcap||file=$pwd/socks-http-pass.pcap||file=$pwd/socks-https-example.pcap||file=$pwd/socks5-http-302.pcap||file=$pwd/socks5-rdp.pcap||file=$pwd/socks5-reverse.pcap||file=$pwd/socks5-smtp-503.pcap)");
+my $files = uri_escape("(file=*/socks-http-example.pcap||file=*/socks-http-pass.pcap||file=*/socks-https-example.pcap||file=*/socks5-http-302.pcap||file=*/socks5-rdp.pcap||file=*/socks5-reverse.pcap||file=*/socks5-smtp-503.pcap)");
 
 
 
@@ -60,6 +60,8 @@ eq_or_diff($txt, $mtxt, "single doesn't match multi", { context => 3 });
 #
 $txt = get("date=-1&field=ta&expression=$files&counts=1");
 $mtxt = get("date=-1&field=ta&expression=$files&counts=1", 1);
+
+
 eq_or_diff($txt, 
 "byhost2, 7
 byip1, 1

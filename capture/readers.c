@@ -1,5 +1,5 @@
 /******************************************************************************/
-/* writer-null.c  -- writer that doesn't do anything
+/* readers.c  -- Functions dealing with pcap readers
  *
  * Copyright 2012-2015 AOL Inc. All rights reserved.
  *
@@ -15,50 +15,50 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _FILE_OFFSET_BITS 64
-#include <stdio.h>
+
 #include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
 #include "moloch.h"
 
 extern MolochConfig_t        config;
 
-static uint32_t              outputFilePos = 24;
+static MolochStringHashStd_t readersHash;
+
+void reader_libpcapfile_init(char*);
+void reader_libpcap_init(char*);
+
+MolochReaderStart  moloch_reader_start;
+MolochReaderStats  moloch_reader_stats;
+MolochReaderFilter moloch_reader_should_filter;
+MolochReaderStop   moloch_reader_stop;
 
 
 /******************************************************************************/
-uint32_t writer_null_queue_length()
-{
-    return 0;
+void moloch_readers_set(char *name) {
+    MolochString_t *str;
+    if (!name)
+        name = moloch_config_str(NULL, "pcapReadMethod", "libpcap");
+
+
+    HASH_FIND(s_, readersHash, name, str);
+    if (!str) {
+        LOG("Couldn't find pcapReadMethod '%s' implementation", name);
+        exit(0);
+    }
+    MolochReaderInit func = str->uw;
+    func(name);
 }
 /******************************************************************************/
-void writer_null_flush(gboolean UNUSED(all))
-{
+void moloch_readers_add(char *name, MolochReaderInit func) {
+    moloch_string_add(&readersHash, name, func, TRUE);
 }
 /******************************************************************************/
-void writer_null_exit()
+void moloch_readers_init()
 {
+    HASH_INIT(s_, readersHash, moloch_string_hash, moloch_string_cmp);
+    moloch_readers_add("libpcap-file", reader_libpcapfile_init);
+    moloch_readers_add("libpcap", reader_libpcap_init);
 }
 /******************************************************************************/
-void
-writer_null_write(const MolochPacket_t *packet, uint32_t *fileNum, uint64_t *filePos)
+void moloch_readers_exit()
 {
-    *fileNum = 0;
-    *filePos = outputFilePos;
-    outputFilePos += 16 + packet->pktlen;
-}
-/******************************************************************************/
-char *
-writer_null_name() {
-    return "null";
-}
-/******************************************************************************/
-void writer_null_init(char *UNUSED(name))
-{
-    moloch_writer_queue_length = writer_null_queue_length;
-    moloch_writer_flush        = writer_null_flush;
-    moloch_writer_exit         = writer_null_exit;
-    moloch_writer_write        = writer_null_write;
-    moloch_writer_name         = writer_null_name;
 }

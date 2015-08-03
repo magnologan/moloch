@@ -2,6 +2,26 @@
    "packets" : [
       {
          "body" : {
+            "test" : {
+               "number" : [
+                  33554442
+               ],
+               "ip" : [
+                  167772161
+               ],
+               "ip-asn" : [
+                  "AS0000 This is neat"
+               ],
+               "string" : [
+                  "16777226:56329,33554442:53"
+               ],
+               "ip-geo" : [
+                  "RUS"
+               ],
+               "ip-rir" : [
+                  ""
+               ]
+            },
             "dns" : {
                "qc-term" : [
                   "IN"
@@ -58,13 +78,13 @@
             "fb1" : "a9ba010000010000",
             "a1" : "10.0.0.1",
             "fb2" : "a9ba858300010000",
-            "db1" : 64,
             "dnshocnt" : 1,
+            "db1" : 64,
             "mac2-term-cnt" : 2,
             "by1" : 72,
             "p2" : 53,
-            "mac1-term-cnt" : 1,
             "rir2" : "TEST",
+            "mac1-term-cnt" : 1,
             "psl" : [
                88,
                163

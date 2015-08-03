@@ -45,11 +45,12 @@ void moloch_writers_start(char *name) {
 
     HASH_FIND(s_, writersHash, name, str);
     if (!str) {
-        LOG("Couldn't find pcapWriteMethod %s implementation", name);
+        LOG("Couldn't find pcapWriteMethod '%s' implementation", name);
         exit(0);
     }
     MolochWriterInit func = str->uw;
     func(name);
+    moloch_add_can_quit((MolochCanQuitFunc)moloch_writer_queue_length);
 }
 /******************************************************************************/
 void moloch_writers_add(char *name, MolochWriterInit func) {

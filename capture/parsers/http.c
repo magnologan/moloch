@@ -124,7 +124,7 @@ moloch_hp_cb_on_body (http_parser *parser, const char *at, size_t length)
 
     if (!(http->inBody & (1 << http->which))) {
         if (moloch_memstr(at, length, "password=", 9)) {
-            moloch_nids_add_tag(session, "http:password");
+            moloch_session_add_tag(session, "http:password");
         }
 
         moloch_parsers_magic(session, magicField, at, length);
@@ -252,7 +252,7 @@ http_add_value(MolochSession_t *session, HTTPInfo_t *http)
 
             in_addr_t ia = inet_addr(ip);
             if (ia == 0 || ia == 0xffffffff) {
-                moloch_nids_add_tag(session, "http:bad-xff");
+                moloch_session_add_tag(session, "http:bad-xff");
                 LOG("ERROR - Didn't understand ip: %s %s %d", http->valueString[http->which]->str, ip, ia);
                 continue;
             }
@@ -333,9 +333,9 @@ moloch_hp_cb_on_header_value (http_parser *parser, const char *at, size_t length
         snprintf(header, sizeof(header), "http:header:%s", lower);
         g_free(lower);
         if (http->which == http->urlWhich)
-            moloch_nids_add_tag_type(session, tagsReqField, header);
+            moloch_session_add_tag_type(session, tagsReqField, header);
         else
-            moloch_nids_add_tag_type(session, tagsResField, header);
+            moloch_session_add_tag_type(session, tagsResField, header);
     }
 
     moloch_plugins_cb_hp_ohv(session, parser, at, length);
@@ -401,7 +401,7 @@ moloch_hp_cb_on_headers_complete (http_parser *parser)
         char *ch = http->urlString->str;
         while (*ch) {
             if (*ch < 32) {
-                moloch_nids_add_tag(session, "http:control-char");
+                moloch_session_add_tag(session, "http:control-char");
                 break;
             }
             ch++;
@@ -536,7 +536,7 @@ moloch_hp_cb_on_headers_complete (http_parser *parser)
         http->hostString = NULL;
     }
 
-    moloch_nids_add_protocol(session, "http");
+    moloch_session_add_protocol(session, "http");
 
     if (pluginsCbs & MOLOCH_PLUGIN_HP_OHC)
         moloch_plugins_cb_hp_ohc(session, parser);
@@ -622,10 +622,10 @@ void http_free(MolochSession_t UNUSED(*session), void *uw)
 /******************************************************************************/
 void http_classify(MolochSession_t *session, const unsigned char *UNUSED(data), int UNUSED(len), int UNUSED(which))
 {
-    if (moloch_nids_has_protocol(session, "http"))
+    if (moloch_session_has_protocol(session, "http"))
         return;
 
-    moloch_nids_add_protocol(session, "http");
+    moloch_session_add_protocol(session, "http");
 
     HTTPInfo_t            *http          = MOLOCH_TYPE_ALLOC0(HTTPInfo_t);
 

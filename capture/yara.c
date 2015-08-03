@@ -1,6 +1,6 @@
 /* yara.c  -- Functions dealing with yara library
  *
- * Copyright 2012-2014 AOL Inc. All rights reserved.
+ * Copyright 2012-2015 AOL Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this Software except in compliance with the License.
@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "glib.h"
 #include "yara.h"
 #include "moloch.h"
 
@@ -79,11 +78,11 @@ int moloch_yara_callback(int message, YR_RULE* rule, MolochSession_t* session)
 
     if (message == CALLBACK_MSG_RULE_MATCHING) {
         snprintf(tagname, sizeof(tagname), "yara:%s", rule->identifier);
-        moloch_nids_add_tag(session, tagname);
+        moloch_session_add_tag(session, tagname);
         tag = rule->tags;
         while(tag != NULL && *tag) {
             snprintf(tagname, sizeof(tagname), "yara:%s", tag);
-            moloch_nids_add_tag(session, tagname);
+            moloch_session_add_tag(session, tagname);
             tag += strlen(tag) + 1;
         }
     }
@@ -172,11 +171,11 @@ int moloch_yara_callback(int message, YR_RULE* rule, MolochSession_t* session)
 
     if (message == CALLBACK_MSG_RULE_MATCHING) {
         snprintf(tagname, sizeof(tagname), "yara:%s", rule->identifier);
-        moloch_nids_add_tag(session, tagname);
+        moloch_session_add_tag(session, tagname);
         tag = rule->tags;
         while(tag != NULL && *tag) {
             snprintf(tagname, sizeof(tagname), "yara:%s", tag);
-            moloch_nids_add_tag(session, tagname);
+            moloch_session_add_tag(session, tagname);
             tag += strlen(tag) + 1;
         }
     }
@@ -268,12 +267,12 @@ int moloch_yara_callback(RULE* rule, MolochSession_t* session)
 
     if (rule->flags & RULE_FLAGS_MATCH) {
         snprintf(tagname, sizeof(tagname), "yara:%s", rule->identifier);
-        moloch_nids_add_tag(session, tagname);
+        moloch_session_add_tag(session, tagname);
         tag = rule->tag_list_head;
         while(tag != NULL) {
             if (tag->identifier) {
                 snprintf(tagname, sizeof(tagname), "yara:%s", tag->identifier);
-                moloch_nids_add_tag(session, tagname);
+                moloch_session_add_tag(session, tagname);
             }
             tag = tag->next;
         }
@@ -284,20 +283,20 @@ int moloch_yara_callback(RULE* rule, MolochSession_t* session)
 /******************************************************************************/
 int yr_scan_mem_blocks(MEMORY_BLOCK* block, YARA_CONTEXT* context, YARACALLBACK callback, void* user_data);
 
-void  moloch_yara_execute(MolochSession_t *session, unsigned char *data, int len, int first)
+void  moloch_yara_execute(MolochSession_t *session, const uint8_t *data, int len, int first)
 {
     MEMORY_BLOCK block;
 
     if (first) {
-        block.data = data;
+        block.data = (uint8_t *)data;
         block.size = len;
         block.base = 0;
     } else if (len == 1) {
-        block.data = data+1;
+        block.data = (uint8_t *)data+1;
         block.size = len-1;
         block.base = 1;
     } else {
-        block.data = data+2;
+        block.data = (uint8_t *)data+2;
         block.size = len-2;
         block.base = 2;
     }

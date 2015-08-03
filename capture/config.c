@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include "moloch.h"
@@ -298,6 +299,7 @@ void moloch_config_load()
     }
 
     config.plugins          = moloch_config_str_list(keyfile, "plugins", NULL);
+    config.rootPlugins      = moloch_config_str_list(keyfile, "rootPlugins", NULL);
     config.smtpIpHeaders    = moloch_config_str_list(keyfile, "smtpIpHeaders", NULL);
 
     if (config.smtpIpHeaders) {
@@ -346,9 +348,9 @@ void moloch_config_load()
     config.maxFileSizeG          = moloch_config_double(keyfile, "maxFileSizeG", 4, 0.01, 1024);
     config.maxFileSizeB          = config.maxFileSizeG*1024LL*1024LL*1024LL;
     config.maxFileTimeM          = moloch_config_int(keyfile, "maxFileTimeM", 0, 0, 0xffff);
-    config.icmpTimeout           = moloch_config_int(keyfile, "icmpTimeout", 10, 1, 0xffff);
-    config.udpTimeout            = moloch_config_int(keyfile, "udpTimeout", 60, 1, 0xffff);
-    config.tcpTimeout            = moloch_config_int(keyfile, "tcpTimeout", 60*8, 10, 0xffff);
+    config.timeouts[SESSION_ICMP]= moloch_config_int(keyfile, "icmpTimeout", 10, 1, 0xffff);
+    config.timeouts[SESSION_UDP] = moloch_config_int(keyfile, "udpTimeout", 60, 1, 0xffff);
+    config.timeouts[SESSION_TCP] = moloch_config_int(keyfile, "tcpTimeout", 60*8, 10, 0xffff);
     config.tcpSaveTimeout        = moloch_config_int(keyfile, "tcpSaveTimeout", 60*8, 10, 60*120);
     config.maxStreams            = moloch_config_int(keyfile, "maxStreams", 1500000, 1, 16777215);
     config.maxPackets            = moloch_config_int(keyfile, "maxPackets", 10000, 1, 1000000);
@@ -362,6 +364,9 @@ void moloch_config_load()
     config.pcapBufferSize        = moloch_config_int(keyfile, "pcapBufferSize", 300000000, 100000, 0xffffffff);
     config.pcapWriteSize         = moloch_config_int(keyfile, "pcapWriteSize", 0x40000, 0x40000, 0x800000);
     config.maxFreeOutputBuffers  = moloch_config_int(keyfile, "maxFreeOutputBuffers", 50, 0, 0xffff);
+
+    config.tcpThreads            = moloch_config_int(keyfile, "tcpThreads", 2, 1, 32);
+    config.magicThreads          = moloch_config_int(keyfile, "magicThreads", 1, 1, 16);
 
 
     config.logUnknownProtocols   = moloch_config_boolean(keyfile, "logUnknownProtocols", config.debug);
@@ -595,6 +600,12 @@ void moloch_config_init()
             g_free(str);
         }
 
+        if (config.rootPlugins) {
+            str = g_strjoinv(";", config.rootPlugins);
+            LOG("rootPlugins: %s", str);
+            g_free(str);
+        }
+
         if (config.parsersDir) {
             str = g_strjoinv(";", config.parsersDir);
             LOG("parsersDir: %s", str);
@@ -602,11 +613,11 @@ void moloch_config_init()
         }
 
         LOG("maxFileSizeG: %lf", config.maxFileSizeG);
-        LOG("maxFileSizeB: %ld", config.maxFileSizeB);
+        LOG("maxFileSizeB: %" PRIu64, config.maxFileSizeB);
         LOG("maxFileTimeM: %u", config.maxFileTimeM);
-        LOG("icmpTimeout: %u", config.icmpTimeout);
-        LOG("udpTimeout: %u", config.udpTimeout);
-        LOG("tcpTimeout: %u", config.tcpTimeout);
+        LOG("icmpTimeout: %u", config.timeouts[SESSION_ICMP]);
+        LOG("udpTimeout: %u", config.timeouts[SESSION_UDP]);
+        LOG("tcpTimeout: %u", config.timeouts[SESSION_TCP]);
         LOG("tcpSaveTimeout: %u", config.tcpSaveTimeout);
         LOG("maxStreams: %u", config.maxStreams);
         LOG("maxPackets: %u", config.maxPackets);
@@ -620,6 +631,9 @@ void moloch_config_init()
         LOG("pcapBufferSize: %u", config.pcapBufferSize);
         LOG("pcapWriteSize: %u", config.pcapWriteSize);
         LOG("maxFreeOutputBuffers: %u", config.maxFreeOutputBuffers);
+
+        LOG("magicThreads: %d", config.magicThreads);
+        LOG("tcpThreads: %d", config.tcpThreads);
 
         LOG("logUnknownProtocols: %s", (config.logUnknownProtocols?"true":"false"));
         LOG("logESRequests: %s", (config.logESRequests?"true":"false"));
@@ -678,6 +692,8 @@ void moloch_config_exit()
         g_strfreev(config.parsersDir);
     if (config.plugins)
         g_strfreev(config.plugins);
+    if (config.rootPlugins)
+        g_strfreev(config.rootPlugins);
     if (config.smtpIpHeaders)
         g_strfreev(config.smtpIpHeaders);
 }
