@@ -388,78 +388,102 @@ uint32_t moloch_session_monitoring()
     return HASH_COUNT(h_, sessions[SESSION_TCP]) + HASH_COUNT(h_, sessions[SESSION_UDP]) + HASH_COUNT(h_, sessions[SESSION_ICMP]);
 }
 /******************************************************************************/
-gboolean moloch_session_cleanup_gfunc( gpointer UNUSED(user_data))
+static void *moloch_session_cleanup_thread(void *UNUSED(arg))
 {
     int ses;
     MolochSession_t *session;
 
+    while (1) {
+        int doSleep = 1;
+        int cnt;
+
 // Sessions Idle Long Time
-    MOLOCH_LOCK(sessions);
-    for (ses = 0; ses < SESSION_MAX; ses++) {
-        while (1) {
-            session = DLL_PEEK_HEAD(q_, &sessionsQ[ses]);
-            if (session && (DLL_COUNT(q_, &sessionsQ[ses]) > config.maxStreams ||
-                            ((uint64_t)session->lastPacket.tv_sec + config.timeouts[ses] < (uint64_t)lastPacketSecs))) {
-                if (session->tfq_next) {
-                    LOG("ALW - NOT SAVING BECAUSE TFQ");
-                    continue;
+        for (ses = 0; ses < SESSION_MAX; ses++) {
+            cnt = 0;
+
+            while (cnt < 15000) {
+                MOLOCH_LOCK(sessions);
+                session = DLL_PEEK_HEAD(q_, &sessionsQ[ses]);
+
+                if (session && (DLL_COUNT(q_, &sessionsQ[ses]) > config.maxStreams ||
+                                ((uint64_t)session->lastPacket.tv_sec + config.timeouts[ses] < (uint64_t)lastPacketSecs))) {
+
+                    if (unlikely(session->tfq_next != NULL)) {
+                        LOG("ALW - NOT SAVING BECAUSE TFQ");
+                        MOLOCH_UNLOCK(sessions);
+                        continue;
+                    }
+
+                    MOLOCH_SESSION_LOCK;
+                    DLL_REMOVE(q_, &sessionsQ[ses], session);
+                    if (session->h_next)
+                        HASH_REMOVE(h_, sessions[ses], session);
+                    MOLOCH_UNLOCK(sessions); // Unlock during save
+                    moloch_session_save(session);
+                    // session is gone, no need to unlock
+                    cnt++;
+                } else {
+                    MOLOCH_UNLOCK(sessions);
+                    break;
                 }
+            }
+
+            if (cnt >= 15000)
+                doSleep = 0;
+        }
+
+// TCP Sessions Open Long Time
+        cnt = 0;
+        while (cnt < 1000) {
+            MOLOCH_LOCK(tcpWriteQ);
+            session = DLL_PEEK_HEAD(tcp_, &tcpWriteQ);
+            MOLOCH_UNLOCK(tcpWriteQ);
+
+            if (session && (uint64_t)session->saveTime < (uint64_t)lastPacketSecs) {
                 MOLOCH_SESSION_LOCK;
-                DLL_REMOVE(q_, &sessionsQ[ses], session);
-                if (session->h_next)
-                    HASH_REMOVE(h_, sessions[ses], session);
-                MOLOCH_UNLOCK(sessions); // Unlock during save
-                moloch_session_save(session);
-                // session is gone, no need to unlock
-                MOLOCH_LOCK(sessions); // Relock for the loop
+                moloch_session_mid_save(session, session->lastPacket.tv_sec);
+                cnt++;
+                MOLOCH_SESSION_UNLOCK;
             } else {
                 break;
             }
         }
-    }
-    MOLOCH_UNLOCK(sessions);
 
-
-// TCP Sessions Open Long Time
-    while (1) {
-        MOLOCH_LOCK(tcpWriteQ);
-        session = DLL_PEEK_HEAD(tcp_, &tcpWriteQ);
-        MOLOCH_UNLOCK(tcpWriteQ);
-
-        if (session && (uint64_t)session->saveTime < (uint64_t)lastPacketSecs) {
-            MOLOCH_SESSION_LOCK;
-            moloch_session_mid_save(session, session->lastPacket.tv_sec);
-            MOLOCH_SESSION_UNLOCK;
-        } else {
-            break;
-        }
-    }
-
+        if (cnt == 1000)
+            doSleep = 0;
 
 // TCP Session Closing Q
-    while (1) {
-        MOLOCH_LOCK(sessions);
-        session = DLL_PEEK_HEAD(q_, &closingQ);
-        MOLOCH_UNLOCK(sessions);
-
-        if (session && session->saveTime < (uint64_t)lastPacketSecs) {
+        cnt = 0;
+        while (cnt < 1000) {
             MOLOCH_LOCK(sessions);
-            MOLOCH_SESSION_LOCK;
-            DLL_REMOVE(q_, &closingQ, session);
-            if (session->h_next) {
-                HASH_REMOVE(h_, sessions[SESSION_TCP], session);
-            }
+            session = DLL_PEEK_HEAD(q_, &closingQ);
             MOLOCH_UNLOCK(sessions);
-            moloch_session_save(session);
-            // session is gone, no need to unlock
-        } else {
-            break;
+
+            if (session && session->saveTime < (uint64_t)lastPacketSecs) {
+                MOLOCH_LOCK(sessions);
+                MOLOCH_SESSION_LOCK;
+                DLL_REMOVE(q_, &closingQ, session);
+                if (session->h_next) {
+                    HASH_REMOVE(h_, sessions[SESSION_TCP], session);
+                }
+                MOLOCH_UNLOCK(sessions);
+                moloch_session_save(session);
+                cnt++;
+                // session is gone, no need to unlock
+            } else {
+                break;
+            }
         }
-    }
+        if (cnt == 1000)
+            doSleep = 0;
 
+// Pause if we processed everything
+        if (doSleep) {
+            usleep(5000);
+        }
+    } // while
 
-// Call again
-    return G_SOURCE_CONTINUE;
+    return NULL;
 }
 
 
@@ -509,7 +533,8 @@ void moloch_session_init()
     DLL_INIT(q_, &sessionsQ[SESSION_TCP]);
     DLL_INIT(q_, &sessionsQ[SESSION_ICMP]);
 
-    g_timeout_add(1, moloch_session_cleanup_gfunc, NULL);
+    
+    g_thread_new("moloch-cleanup", &moloch_session_cleanup_thread, NULL);
 }
 /******************************************************************************/
 void moloch_session_flush()

@@ -508,7 +508,6 @@ typedef void (*MolochSeqNum_cb)(uint32_t seq, gpointer uw);
         __LINE__, __FUNCTION__); \
     printf(__VA_ARGS__); \
     printf("\n"); \
-    fflush(stdout); \
 } while(0) /* no trailing ; */
 
 
