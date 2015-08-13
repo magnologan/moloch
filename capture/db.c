@@ -31,7 +31,7 @@
 #include "patricia.h"
 #include "GeoIP.h"
 
-#define MOLOCH_MIN_DB_VERSION 25
+#define MOLOCH_MIN_DB_VERSION 26
 
 extern uint64_t         totalPackets;
 extern uint64_t         totalBytes;
@@ -1013,6 +1013,10 @@ void moloch_db_update_stats()
         "\"memory\": %" PRIu64 ", "
         "\"cpu\": %" PRIu64 ", "
         "\"diskQueue\": %u, "
+        "\"esQueue\": %u, "
+        "\"closeQueue\": %u, "
+        "\"magicQueue\": %u, "
+        "\"packetQueue\": %u, "
         "\"totalPackets\": %" PRIu64 ", "
         "\"totalK\": %" PRIu64 ", "
         "\"totalSessions\": %" PRIu64 ", "
@@ -1030,6 +1034,10 @@ void moloch_db_update_stats()
         moloch_db_memory_size(),
         diffusage*10000/diffms,
         moloch_writer_queue_length?moloch_writer_queue_length():0,
+        moloch_http_queue_length(esServer),
+        moloch_session_close_outstanding(),
+        moloch_parsers_magic_outstanding(),
+        moloch_packet_outstanding(),
         dbTotalPackets,
         dbTotalK,
         dbTotalSessions,
@@ -1102,6 +1110,10 @@ void moloch_db_update_dstats(int n)
         "\"memory\": %" PRIu64 ", "
         "\"cpu\": %" PRIu64 ", "
         "\"diskQueue\": %u, "
+        "\"esQueue\": %u, "
+        "\"closeQueue\": %u, "
+        "\"magicQueue\": %u, "
+        "\"packetQueue\": %u, "
         "\"deltaPackets\": %" PRIu64 ", "
         "\"deltaBytes\": %" PRIu64 ", "
         "\"deltaSessions\": %" PRIu64 ", "
@@ -1116,6 +1128,10 @@ void moloch_db_update_dstats(int n)
         moloch_db_memory_size(),
         diffusage*10000/diffms,
         moloch_writer_queue_length?moloch_writer_queue_length():0,
+        moloch_http_queue_length(esServer),
+        moloch_session_close_outstanding(),
+        moloch_parsers_magic_outstanding(),
+        moloch_packet_outstanding(),
         (totalPackets - lastPackets[n]),
         (totalBytes - lastBytes[n]),
         (totalSessions - lastSessions[n]),
