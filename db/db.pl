@@ -32,6 +32,7 @@
 # 23 - packet lengths
 # 24 - field category
 # 25 - cert hash
+# 26 - stats/dstats are dynamic
 
 use HTTP::Request::Common;
 use LWP::UserAgent;
@@ -40,7 +41,7 @@ use Data::Dumper;
 use POSIX;
 use strict;
 
-my $VERSION = 25;
+my $VERSION = 26;
 my $verbose = 0;
 my $PREFIX = "";
 
@@ -359,7 +360,7 @@ my $mapping = '
   stat: {
     _all : {enabled : false},
     _source : {enabled : true},
-    dynamic: "strict",
+    dynamic: "true",
     properties: {
       hostname: {
         type: "string",
@@ -457,7 +458,7 @@ my $mapping = '
   dstat: {
     _all : {enabled : false},
     _source : {enabled : true},
-    dynamic: "strict",
+    dynamic: "true",
     properties: {
       nodeName: {
         type: "string",
@@ -2296,7 +2297,7 @@ if ($ARGV[1] =~ /(init|wipe)/) {
     dstatsUpdate();
 
     print "Finished\n";
-} elsif ($main::versionNumber >= 20 && $main::versionNumber <= 25) {
+} elsif ($main::versionNumber >= 20 && $main::versionNumber <= 26) {
     print "Trying to upgrade from version $main::versionNumber to version $VERSION.\n\n";
     waitFor("UPGRADE", "do you want to upgrade?");
     sessionsUpdate();
