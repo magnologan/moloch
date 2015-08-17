@@ -399,7 +399,7 @@ block content
             visible: visibleColumn("info"),
             defaultContent: "",
             className: "infoColumn",
-            createdCell: function (cell, cellData, rowData, rowIndex, colIndex) {
+            render: function (rowData, type, row, meta) {
               var data = "<div class=infoColumn>";
               if (rowData.us) {
                 if (rowData.infoAll) {
@@ -471,7 +471,7 @@ block content
 
               data += "</div>";
 
-              $(cell).html(data);
+              return data;
             }
           }
         ],

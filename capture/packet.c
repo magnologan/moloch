@@ -47,6 +47,7 @@ extern uint32_t              pluginsCbs;
 static int                   mac1Field;
 static int                   mac2Field;
 static int                   vlanField;
+static int                   greIpField;
 
 time_t                       lastPacketSecs;
 
@@ -59,6 +60,8 @@ static MolochSessionHead_t   tcpFinishQ;
 static MOLOCH_LOCK_DEFINE(tcpFinishQ);
 static MOLOCH_COND_DEFINE(tcpFinishQ);
 
+
+MolochSession_t *moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int len);
 
 /******************************************************************************/
 // session should already be locked
@@ -258,7 +261,7 @@ LOCAL void moloch_packet_process_tcp(MolochSession_t *session, struct tcphdr *tc
     } else {
         uint32_t sortA, sortB;
         DLL_FOREACH_REVERSE(td_, tcpData, ftd) {
-            if (which == ftd->which) { 
+            if (which == ftd->which) {
                 sortA = seq;
                 sortB = ftd->seq;
             } else {
@@ -306,8 +309,69 @@ LOCAL void moloch_packet_process_tcp(MolochSession_t *session, struct tcphdr *tc
     }
 }
 /******************************************************************************/
+void moloch_packet_gre4(const MolochPacket_t *packet, const struct ip *ip4, const uint8_t *data, int len)
+{
+    BSB bsb;
+
+    if (len < 4)
+        return;
+
+    BSB_INIT(bsb, data, len);
+    uint16_t flags_version = 0;
+    BSB_IMPORT_u16(bsb, flags_version);
+    uint16_t type = 0;
+    BSB_IMPORT_u16(bsb, type);
+
+    if (type != 0x0800) {
+        if (config.logUnknownProtocols)
+            LOG("Unknown GRE protocol 0x%04x(%d)", type, type);
+        return;
+    }
+
+    uint16_t offset = 0;
+
+    if (flags_version & (0x8000 | 0x4000)) {
+        BSB_IMPORT_skip(bsb, 2);
+        BSB_IMPORT_u16(bsb, offset);
+    }
+
+    // key
+    if (flags_version & 0x2000) {
+        BSB_IMPORT_skip(bsb, 4);
+    }
+
+    // sequence number
+    if (flags_version & 0x1000) {
+        BSB_IMPORT_skip(bsb, 4);
+    }
+
+    // routing
+    if (flags_version & 0x4000) {
+        while (BSB_NOT_ERROR(bsb)) {
+            BSB_IMPORT_skip(bsb, 3);
+            int len = 0;
+            BSB_IMPORT_u08(bsb, len);
+            if (len == 0)
+                break;
+            BSB_IMPORT_skip(bsb, len);
+        }
+    }
+
+    if (BSB_NOT_ERROR(bsb)) {
+        MolochSession_t *session = moloch_packet_ip4(packet, BSB_WORK_PTR(bsb), BSB_REMAINING(bsb));
+        if (!session)
+            return;
+
+        moloch_field_int_add(greIpField, session, ip4->ip_src.s_addr);
+        moloch_field_int_add(greIpField, session, ip4->ip_dst.s_addr);
+        moloch_session_add_protocol(session, "gre");
+    }
+
+
+}
+/******************************************************************************/
 // ALW TODO: IP FRAGS!!!
-void moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int len)
+MolochSession_t *moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int len)
 {
     struct ip           *ip4 = (struct ip*)data;
     char                 sessionId[MOLOCH_SESSIONID_LEN];
@@ -316,20 +380,20 @@ void moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int le
     int                  ses;
 
     if (len < (int)sizeof(struct ip))
-        return;
+        return NULL;
 
     int ip_len = ntohs(ip4->ip_len);
     if (len < ip_len)
-        return;
+        return NULL;
 
     int ip_hdr_len = 4 * ip4->ip_hl;
     if (len < ip_hdr_len)
-        return;
+        return NULL;
 
     switch (ip4->ip_p) {
     case IPPROTO_TCP:
         if (len < ip_hdr_len + (int)sizeof(struct tcphdr)) {
-            return;
+            return NULL;
         }
 
         tcphdr = (struct tcphdr *)((char*)ip4 + ip_hdr_len);
@@ -340,7 +404,7 @@ void moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int le
         break;
     case IPPROTO_UDP:
         if (len < ip_hdr_len + (int)sizeof(struct udphdr)) {
-            return;
+            return NULL;
         }
 
         udphdr = (struct udphdr *)((char*)ip4 + ip_hdr_len);
@@ -354,10 +418,13 @@ void moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int le
                           ip4->ip_dst.s_addr, 0);
         ses = SESSION_ICMP;
         break;
+    case IPPROTO_GRE:
+        moloch_packet_gre4(packet, ip4, data + ip_hdr_len, len - ip_hdr_len);
+        return NULL;
     default:
         if (config.logUnknownProtocols)
             LOG("Unknown protocol %d", ip4->ip_p);
-        return;
+        return NULL;
     }
 
     totalBytes += packet->pktlen;
@@ -386,7 +453,7 @@ void moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int le
           moloch_session_monitoring(),
           moloch_session_idle_seconds(ses),
           stats.total,
-          stats.dropped - initialDropped, 
+          stats.dropped - initialDropped,
           (stats.dropped - initialDropped)*(double)100.0/stats.total,
           moloch_http_queue_length(esServer),
           moloch_writer_queue_length(),
@@ -568,6 +635,7 @@ void moloch_packet_ip4(const MolochPacket_t *packet, const uint8_t *data, int le
     }
 
     MOLOCH_SESSION_UNLOCK;
+    return session;
 }
 /******************************************************************************/
 void moloch_packet_ip6(const MolochPacket_t *packet, const uint8_t *data, int len)
@@ -593,7 +661,7 @@ void moloch_packet_ether(const MolochPacket_t *packet, const uint8_t *data, int 
         case 0x86dd:
             moloch_packet_ip6(packet, data+n, len - n);
             return;
-        case 0x8100: 
+        case 0x8100:
             n += 2;
             break;
         default:
@@ -661,6 +729,12 @@ void moloch_packet_init()
         "vlan", "VLan", "vlan",
         "vlan value",
         MOLOCH_FIELD_TYPE_INT_HASH,  MOLOCH_FIELD_FLAG_COUNT | MOLOCH_FIELD_FLAG_LINKED_SESSIONS,
+        NULL);
+
+    greIpField = moloch_field_define("general", "ip",
+        "gre.ip", "GRE IP", "greip",
+        "GRE ip addresses for session",
+        MOLOCH_FIELD_TYPE_IP_HASH,  MOLOCH_FIELD_FLAG_COUNT,
         NULL);
 
     int i;
