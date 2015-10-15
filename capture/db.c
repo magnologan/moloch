@@ -31,13 +31,12 @@
 #include "patricia.h"
 #include "GeoIP.h"
 
-#define MOLOCH_MIN_DB_VERSION 25
+#define MOLOCH_MIN_DB_VERSION 26
 
 extern uint64_t         totalPackets;
 extern uint64_t         totalBytes;
 extern uint64_t         totalSessions;
 static uint16_t         myPid;
-static time_t           dbLastSave;
 extern uint32_t         pluginsCbs;
 
 struct timeval          startTime;
@@ -211,9 +210,12 @@ void moloch_db_js0n_str(BSB *bsb, unsigned char *in, gboolean utf8)
 }
 
 /******************************************************************************/
-static char *sJson = 0;
+#define MAX_JSONS 10
+static char   *sJson[MAX_JSONS];
 static MOLOCH_LOCK_DEFINE(sJson);
-static BSB jbsb;
+static BSB     jbsbs[MAX_JSONS];
+static int     inuse[MAX_JSONS];
+static time_t  dbLastSave[MAX_JSONS];
 
 void moloch_db_save_session(MolochSession_t *session, int final)
 {
@@ -230,6 +232,8 @@ void moloch_db_save_session(MolochSession_t *session, int final)
     unsigned char         *dataPtr;
     uint32_t               jsonSize;
     int                    pos;
+    int                    jpos;
+    BSB                    jbsb;
 
     /* Let the plugins finish */
     if (pluginsCbs & MOLOCH_PLUGIN_SAVE)
@@ -290,23 +294,35 @@ void moloch_db_save_session(MolochSession_t *session, int final)
 
     /* If no room left to add, send the buffer */
     MOLOCH_LOCK(sJson);
-    if (sJson && (uint32_t)BSB_REMAINING(jbsb) < jsonSize) {
-        if (BSB_LENGTH(jbsb) > 0) {
-            moloch_http_set(esServer, key, key_len, sJson, BSB_LENGTH(jbsb), PRIORITY_SPI, NULL, NULL);
+    for (jpos = 0; jpos < MAX_JSONS; jpos++)
+        if (!inuse[jpos])
+            break;
+
+    if (jpos == MAX_JSONS) {
+        LOG("ERROR - No more json buffers");
+        exit(0);
+    }
+    inuse[jpos] = 1;
+    MOLOCH_UNLOCK(sJson);
+
+    if (sJson[jpos] && (uint32_t)BSB_REMAINING(jbsbs[jpos]) < jsonSize) {
+        if (BSB_LENGTH(jbsbs[jpos]) > 0) {
+            moloch_http_set(esServer, key, key_len, sJson[jpos], BSB_LENGTH(jbsbs[jpos]), PRIORITY_SPI, NULL, NULL);
         }
-        sJson = 0;
+        sJson[jpos] = 0;
 
         struct timeval currentTime;
         gettimeofday(&currentTime, NULL);
-        dbLastSave = currentTime.tv_sec;
+        dbLastSave[jpos] = currentTime.tv_sec;
     }
 
     /* Allocate a new buffer using the max of the bulk size or estimated size. */
-    if (!sJson) {
+    if (!sJson[jpos]) {
         const int size = MAX(config.dbBulkSize, jsonSize);
-        sJson = moloch_http_get_buffer(size);
-        BSB_INIT(jbsb, sJson, size);
+        sJson[jpos] = moloch_http_get_buffer(size);
+        BSB_INIT(jbsbs[jpos], sJson[jpos], size);
     }
+    jbsb = jbsbs[jpos];
 
     uint32_t timediff = (session->lastPacket.tv_sec - session->firstPacket.tv_sec)*1000 +
                         (session->lastPacket.tv_usec - session->firstPacket.tv_usec)/1000;
@@ -861,25 +877,30 @@ void moloch_db_save_session(MolochSession_t *session, int final)
     BSB_EXPORT_rewind(jbsb, 1); // Remove last comma
     BSB_EXPORT_cstr(jbsb, "}\n");
 
+    jbsbs[jpos] = jbsb;
+    MOLOCH_LOCK(sJson);
+    inuse[jpos] = 0;
+    MOLOCH_UNLOCK(sJson);
+
     if (BSB_IS_ERROR(jbsb)) {
         LOG("ERROR - Ran out of memory creating DB record supposed to be %d", jsonSize);
-        goto cleanup;
+        return;
     }
 
     if (config.dryRun) {
         if (config.tests) {
             const int hlen = dataPtr - startPtr;
-            fprintf(stderr, "  %s{\"header\":%.*s,\n  \"body\":%.*s}\n", (totalSessions==1 ? "":","), hlen-1, sJson, (int)(BSB_LENGTH(jbsb)-hlen-1), sJson+hlen);
+            fprintf(stderr, "  %s{\"header\":%.*s,\n  \"body\":%.*s}\n", (totalSessions==1 ? "":","), hlen-1, sJson[jpos], (int)(BSB_LENGTH(jbsb)-hlen-1), sJson[jpos]+hlen);
         } else if (config.debug) {
-            LOG("%.*s\n", (int)BSB_LENGTH(jbsb), sJson);
+            LOG("%.*s\n", (int)BSB_LENGTH(jbsb), sJson[jpos]);
         }
-        BSB_INIT(jbsb, sJson, BSB_SIZE(jbsb));
-        goto cleanup;
+        BSB_INIT(jbsbs[jpos], sJson[jpos], BSB_SIZE(jbsbs[jpos]));
+        return;
     }
 
     if (config.noSPI) {
-        BSB_INIT(jbsb, sJson, BSB_SIZE(jbsb));
-        goto cleanup;
+        BSB_INIT(jbsbs[jpos], sJson[jpos], BSB_SIZE(jbsbs[jpos]));
+        return;
     }
 
     if (jsonSize < (uint32_t)(BSB_WORK_PTR(jbsb) - startPtr)) {
@@ -887,9 +908,6 @@ void moloch_db_save_session(MolochSession_t *session, int final)
         if (config.debug)
             LOG("Data:\n%.*s\n", (int)(BSB_WORK_PTR(jbsb) - startPtr), startPtr);
     }
-
-cleanup:
-    MOLOCH_UNLOCK(sJson);
 }
 /******************************************************************************/
 long long zero_atoll(char *v) {
@@ -1013,6 +1031,10 @@ void moloch_db_update_stats()
         "\"memory\": %" PRIu64 ", "
         "\"cpu\": %" PRIu64 ", "
         "\"diskQueue\": %u, "
+        "\"esQueue\": %u, "
+        "\"closeQueue\": %u, "
+        "\"magicQueue\": %u, "
+        "\"packetQueue\": %u, "
         "\"totalPackets\": %" PRIu64 ", "
         "\"totalK\": %" PRIu64 ", "
         "\"totalSessions\": %" PRIu64 ", "
@@ -1030,6 +1052,10 @@ void moloch_db_update_stats()
         moloch_db_memory_size(),
         diffusage*10000/diffms,
         moloch_writer_queue_length?moloch_writer_queue_length():0,
+        moloch_http_queue_length(esServer),
+        moloch_session_close_outstanding(),
+        moloch_parsers_magic_outstanding(),
+        moloch_packet_outstanding(),
         dbTotalPackets,
         dbTotalK,
         dbTotalSessions,
@@ -1102,6 +1128,10 @@ void moloch_db_update_dstats(int n)
         "\"memory\": %" PRIu64 ", "
         "\"cpu\": %" PRIu64 ", "
         "\"diskQueue\": %u, "
+        "\"esQueue\": %u, "
+        "\"closeQueue\": %u, "
+        "\"magicQueue\": %u, "
+        "\"packetQueue\": %u, "
         "\"deltaPackets\": %" PRIu64 ", "
         "\"deltaBytes\": %" PRIu64 ", "
         "\"deltaSessions\": %" PRIu64 ", "
@@ -1116,6 +1146,10 @@ void moloch_db_update_dstats(int n)
         moloch_db_memory_size(),
         diffusage*10000/diffms,
         moloch_writer_queue_length?moloch_writer_queue_length():0,
+        moloch_http_queue_length(esServer),
+        moloch_session_close_outstanding(),
+        moloch_parsers_magic_outstanding(),
+        moloch_packet_outstanding(),
         (totalPackets - lastPackets[n]),
         (totalBytes - lastBytes[n]),
         (totalSessions - lastSessions[n]),
@@ -1145,24 +1179,19 @@ gboolean moloch_db_update_stats_gfunc (gpointer user_data)
 /******************************************************************************/
 gboolean moloch_db_flush_gfunc (gpointer user_data )
 {
-    char            key[100];
-    int             key_len;
-
-    if (!sJson || BSB_LENGTH(jbsb) == 0)
-        return TRUE;
-
+    int            i;
     struct timeval currentTime;
     gettimeofday(&currentTime, NULL);
 
-    if (user_data == 0 && (currentTime.tv_sec - dbLastSave) < config.dbFlushTimeout)
-        return TRUE;
-
-    key_len = snprintf(key, sizeof(key), "/_bulk");
     MOLOCH_LOCK(sJson);
-    moloch_http_set(esServer, key, key_len, sJson, BSB_LENGTH(jbsb), PRIORITY_SPI, NULL, NULL);
-    sJson = 0;
+    for (i = 0; i < MAX_JSONS; i++)
+        if (sJson[i] && !inuse[i] && BSB_LENGTH(jbsbs[i]) > 0 &&
+            ((currentTime.tv_sec - dbLastSave[i]) >= config.dbFlushTimeout || user_data == (gpointer)1)) {
+            moloch_http_set(esServer, "/_bulk", 6, sJson[i], BSB_LENGTH(jbsbs[i]), PRIORITY_SPI, NULL, NULL);
+            dbLastSave[i] = currentTime.tv_sec;
+            sJson[i] = 0;
+        }
     MOLOCH_UNLOCK(sJson);
-    dbLastSave = currentTime.tv_sec;
 
     return TRUE;
 }
@@ -1863,11 +1892,14 @@ int moloch_db_can_quit()
         return 1;
     }
 
-    if (sJson && BSB_LENGTH(jbsb) > 0) {
-        moloch_db_flush_gfunc((gpointer)1);
-        if (config.debug)
-            LOG ("Can't quit, sJson %ld", BSB_LENGTH(jbsb));
-        return 1;
+    int i;
+    for (i = 0; i < MAX_JSONS; i++) {
+        if (sJson[i] && BSB_LENGTH(jbsbs[i]) > 0) {
+            moloch_db_flush_gfunc((gpointer)1);
+            if (config.debug)
+                LOG ("Can't quit, sJson[%d] %ld", i, BSB_LENGTH(jbsbs[i]));
+            return 1;
+        }
     }
 
     if (moloch_http_queue_length(esServer) > 0) {
@@ -1926,7 +1958,7 @@ void moloch_db_init()
         timers[0] = g_timeout_add_seconds( 2, moloch_db_update_stats_gfunc, 0);
         timers[1] = g_timeout_add_seconds( 5, moloch_db_update_stats_gfunc, (gpointer)1);
         timers[2] = g_timeout_add_seconds(60, moloch_db_update_stats_gfunc, (gpointer)2);
-        timers[3] = g_timeout_add_seconds( 1, moloch_db_flush_gfunc, 0);
+        timers[3] = g_timeout_add_seconds( 2, moloch_db_flush_gfunc, 0);
     }
 }
 /******************************************************************************/

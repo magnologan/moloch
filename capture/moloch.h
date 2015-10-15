@@ -210,12 +210,14 @@ typedef struct {
 #define MOLOCH_UNLOCK(var)         pthread_mutex_unlock(&var##_mutex)
 #endif
 #define MOLOCH_LOCK_FREE(var)      pthread_mutex_destroy(&var##_mutex)
+#define MOLOCH_TRYLOCK(var)        (pthread_mutex_trylock(&var##_mutex) == 0)
 
 #define MOLOCH_COND_DEFINE(var)    pthread_cond_t var##_cond = PTHREAD_COND_INITIALIZER
 #define MOLOCH_COND_WAIT(var)      pthread_cond_wait(&var##_cond, &var##_mutex)
 #define MOLOCH_COND_BROADCAST(var) pthread_cond_broadcast(&var##_cond)
 
 #define MOLOCH_SESSION_LOCK        MOLOCH_LOCK(session->lock)
+#define MOLOCH_SESSION_TRYLOCK     MOLOCH_TRYLOCK(session->lock)
 #define MOLOCH_SESSION_UNLOCK      MOLOCH_UNLOCK(session->lock)
 
 #ifndef LOCAL
@@ -451,6 +453,22 @@ typedef struct moloch_session_head {
     int                    tfq_count;
 } MolochSessionHead_t;
 
+/*#define MOLOCHMEMCOUNT*/
+
+#ifdef MOLOCHMEMCOUNT
+
+void *moloch_size_alloc(char *name, int size, int zero);
+void  moloch_size_free(char *name, void *mem);
+
+#define MOLOCH_TYPE_ALLOC(type) (type *)(moloch_size_alloc(#type, sizeof(type), 0))
+#define MOLOCH_TYPE_ALLOC0(type) (type *)(moloch_size_alloc(#type, sizeof(type), 1))
+#define MOLOCH_TYPE_FREE(type,mem) moloch_size_free(#type,mem)
+
+#define MOLOCH_SIZE_ALLOC(name, s)  moloch_size_alloc(#name, s, 0)
+#define MOLOCH_SIZE_ALLOC0(name, s) moloch_size_alloc(#name, s, 1)
+#define MOLOCH_SIZE_FREE(name, mem) moloch_size_free(#name,mem)
+
+#else
 #define MOLOCH_TYPE_ALLOC(type) (type *)(g_slice_alloc(sizeof(type)))
 #define MOLOCH_TYPE_ALLOC0(type) (type *)(g_slice_alloc0(sizeof(type)))
 #define MOLOCH_TYPE_FREE(type,mem) g_slice_free1(sizeof(type),mem)
@@ -460,6 +478,7 @@ int   moloch_size_free(void *mem);
 #define MOLOCH_SIZE_ALLOC(name, s)  moloch_size_alloc(s, 0)
 #define MOLOCH_SIZE_ALLOC0(name, s) moloch_size_alloc(s, 1)
 #define MOLOCH_SIZE_FREE(name, mem) moloch_size_free(mem)
+#endif
 
 typedef struct 
 {

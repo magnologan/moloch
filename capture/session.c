@@ -414,7 +414,11 @@ static void *moloch_session_cleanup_thread(void *UNUSED(arg))
                         continue;
                     }
 
-                    MOLOCH_SESSION_LOCK;
+                    if (!MOLOCH_SESSION_TRYLOCK) {
+                        MOLOCH_UNLOCK(sessions);
+                        continue;
+                    }
+
                     DLL_REMOVE(q_, &sessionsQ[ses], session);
                     if (session->h_next)
                         HASH_REMOVE(h_, sessions[ses], session);
@@ -437,14 +441,19 @@ static void *moloch_session_cleanup_thread(void *UNUSED(arg))
         while (cnt < 1000) {
             MOLOCH_LOCK(tcpWriteQ);
             session = DLL_PEEK_HEAD(tcp_, &tcpWriteQ);
-            MOLOCH_UNLOCK(tcpWriteQ);
 
             if (session && (uint64_t)session->saveTime < (uint64_t)lastPacketSecs) {
-                MOLOCH_SESSION_LOCK;
+                if (!MOLOCH_SESSION_TRYLOCK) {
+                    MOLOCH_UNLOCK(tcpWriteQ);
+                    continue;
+                }
+                MOLOCH_UNLOCK(tcpWriteQ);
+
                 moloch_session_mid_save(session, session->lastPacket.tv_sec);
                 cnt++;
                 MOLOCH_SESSION_UNLOCK;
             } else {
+                MOLOCH_UNLOCK(tcpWriteQ);
                 break;
             }
         }
@@ -457,11 +466,14 @@ static void *moloch_session_cleanup_thread(void *UNUSED(arg))
         while (cnt < 1000) {
             MOLOCH_LOCK(sessions);
             session = DLL_PEEK_HEAD(q_, &closingQ);
-            MOLOCH_UNLOCK(sessions);
 
             if (session && session->saveTime < (uint64_t)lastPacketSecs) {
-                MOLOCH_LOCK(sessions);
-                MOLOCH_SESSION_LOCK;
+                if (!MOLOCH_SESSION_TRYLOCK)
+                {
+                    MOLOCH_UNLOCK(sessions);
+                    continue;
+                }
+
                 DLL_REMOVE(q_, &closingQ, session);
                 if (session->h_next) {
                     HASH_REMOVE(h_, sessions[SESSION_TCP], session);
@@ -471,6 +483,7 @@ static void *moloch_session_cleanup_thread(void *UNUSED(arg))
                 cnt++;
                 // session is gone, no need to unlock
             } else {
+                MOLOCH_UNLOCK(sessions);
                 break;
             }
         }

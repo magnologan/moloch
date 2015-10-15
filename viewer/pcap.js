@@ -34,6 +34,7 @@ var internals = {
     1:  "icmp",
     6:  "tcp",
     17: "udp",
+    47: "gre",
     58: "icmpv6"
   },
   pcaps: {}
@@ -287,6 +288,44 @@ Pcap.prototype.udp = function (buffer, obj, pos) {
   obj.udp.data = buffer.slice(8);
 };
 
+Pcap.prototype.gre4 = function (buffer, obj, pos) {
+  obj.gre = {
+    flags_verison:      buffer.readUInt16BE(0),
+    type:               buffer.readUInt16BE(2),
+    offset:             0,
+  }
+
+  var offset = 4;
+
+  if (obj.gre.flags_version & (0x8000 | 0x4000)) {
+    obj.gre.offset = buffer.readUInt16BE(6);
+    offset = 8;
+  }
+
+  // key
+  if (obj.gre.flags_version & 0x2000) {
+    offset += 4;
+  }
+
+  // seq
+  if (obj.gre.flags_version & 0x1000) {
+    offset += 4;
+  }
+
+  // routing
+  if (obj.gre.flags_version & 0x4000) {
+    while (1) {
+      offset += 3;
+      var len = buffer[offset++];
+      if (len === 0)
+        break;
+      offset += len;
+    }
+  }
+  obj.gre.data = buffer.slice(offset);
+  this.ip4(obj.gre.data, obj, pos + offset);
+}  
+
 Pcap.prototype.ip4 = function (buffer, obj, pos) {
   obj.ip = {
     length: buffer.length,
@@ -312,6 +351,9 @@ Pcap.prototype.ip4 = function (buffer, obj, pos) {
     break;
   case 17:
     this.udp(buffer.slice(obj.ip.hl*4, obj.ip.len), obj, pos + obj.ip.hl*4);
+    break;
+  case 47:
+    this.gre4(buffer.slice(obj.ip.hl*4, obj.ip.len), obj, pos + obj.ip.hl*4);
     break;
   default:
     console.log("Unknown ip.p", obj);

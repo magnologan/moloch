@@ -12,6 +12,7 @@ Run ./tests.pl <optional PCAP files>
 
 PCAP files with known non Moloch source:
 bigendian.pcap - https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=7221
+gre-sample.pcap - http://www.stearns.org/pcap/gre-sample.pcap
 
 
 

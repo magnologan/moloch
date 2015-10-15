@@ -147,6 +147,52 @@ void parse_args(int argc, char **argv)
         exit(1);
     }
 }
+#ifdef MOLOCHMEMCOUNT
+
+static MOLOCH_LOCK_DEFINE(memCounts);
+static HASH_VAR(s_, memCounts, MolochStringHead_t, 211);
+void *moloch_size_alloc(char *name, int size, int zero)
+{
+    MolochString_t *hstring;
+    MOLOCH_LOCK(memCounts);
+    HASH_FIND(s_, memCounts, name, hstring);
+    if (!hstring) {
+        hstring = calloc(1, sizeof(MolochString_t));
+        hstring->str = name;
+        hstring->len = strlen(name);
+        HASH_ADD(s_, memCounts, hstring->str, hstring);
+    }
+    hstring->uw++;
+    MOLOCH_UNLOCK(memCounts);
+
+    if (zero)
+        return calloc(1, size);
+    return malloc(size);
+}
+/******************************************************************************/
+void moloch_size_free(char *name, void *mem)
+{
+    MolochString_t *hstring;
+    MOLOCH_LOCK(memCounts);
+    HASH_FIND(s_, memCounts, name, hstring);
+    if (hstring) {
+        hstring->uw--;
+    }
+    MOLOCH_UNLOCK(memCounts);
+    free(mem);
+}
+/******************************************************************************/
+void moloch_mem_stats()
+{
+    MolochString_t *hstring;
+    MOLOCH_LOCK(memCounts);
+    HASH_FORALL(s_, memCounts, hstring,
+        printf("%40s %10ld\n", hstring->str, (long)hstring->uw);
+    );
+    MOLOCH_UNLOCK(memCounts);
+}
+
+#else
 /******************************************************************************/
 void *moloch_size_alloc(int size, int zero)
 {
@@ -165,6 +211,7 @@ int moloch_size_free(void *mem)
     g_slice_free1(size, mem);
     return size - 8;
 }
+#endif
 /******************************************************************************/
 void cleanup(int UNUSED(sig))
 {
@@ -556,6 +603,11 @@ int main(int argc, char **argv)
     signal(SIGINT, cleanup);
     signal(SIGUSR1, exit);
     signal(SIGCHLD, SIG_IGN);
+
+#ifdef MOLOCHMEMCOUNT
+    HASH_INIT(s_, memCounts, moloch_string_hash, moloch_string_ncmp);
+    signal(SIGUSR2, moloch_mem_stats);
+#endif
 
     mainLoop = g_main_loop_new(NULL, FALSE);
 
