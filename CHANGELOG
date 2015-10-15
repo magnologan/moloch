@@ -1,4 +1,4 @@
-0.13.0 2015/08/XX
+0.13.0 2015/10/XX
   - NOTICE: libnids is no longer required
   - NOTICE: You'll want to rerun configure if using the same build directory
   - NOTICE: db.pl upgrade is required
@@ -6,7 +6,8 @@
   - capture - basic threads
   - capture - memory reporting on linux uses /proc/self/statm now
   - capture - more stats
-  - all - initial GRE support
+  - all - initial GRE support (issue #415)
+  - viewer - expanding info didn't work (issue #416)
 
 0.12.0 2015/06/XX
   - NOTICE: libcurl (>= 7.21.7) is now required, sorry
