@@ -247,6 +247,7 @@ typedef struct moloch_config {
     gboolean  pcapReadOffline;
     gchar   **extraTags;
     gchar     debug;
+    gboolean  quiet;
     gboolean  dryRun;
     gboolean  noSPI;
     gboolean  copyPcap;
@@ -521,12 +522,14 @@ typedef void (*MolochSeqNum_cb)(uint32_t seq, gpointer uw);
 
 /******************************************************************************/
 #define LOG(...) do { \
-    time_t _t = time(NULL); \
-    printf("%15.15s %s:%d %s(): ",\
-        ctime(&_t)+4, __FILE__,\
-        __LINE__, __FUNCTION__); \
-    printf(__VA_ARGS__); \
-    printf("\n"); \
+    if(config.quiet == FALSE) { \
+        time_t _t = time(NULL); \
+        printf("%15.15s %s:%d %s(): ",\
+            ctime(&_t)+4, __FILE__,\
+            __LINE__, __FUNCTION__); \
+        printf(__VA_ARGS__); \
+        printf("\n"); \
+    } \
 } while(0) /* no trailing ; */
 
 
@@ -642,7 +645,7 @@ void     moloch_db_exit();
 
 void moloch_parsers_init();
 void moloch_parsers_initial_tag(MolochSession_t *session);
-unsigned char *moloch_parsers_asn_get_tlv(BSB *bsb, int *apc, int *atag, int *alen);
+unsigned char *moloch_parsers_asn_get_tlv(BSB *bsb, uint32_t *apc, uint32_t *atag, uint32_t *alen);
 void moloch_parsers_asn_decode_oid(char *buf, int bufsz, unsigned char *oid, int len);
 void moloch_parsers_classify_tcp(MolochSession_t *session, const unsigned char *data, int remaining, int which);
 void moloch_parsers_classify_udp(MolochSession_t *session, const unsigned char *data, int remaining, int which);

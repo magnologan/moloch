@@ -1,4 +1,4 @@
-0.13.0 2015/10/XX
+0.13.0 2015/11/XX
   - NOTICE: libnids is no longer required
   - NOTICE: You'll want to rerun configure if using the same build directory
   - NOTICE: db.pl upgrade is required
@@ -9,7 +9,7 @@
   - all - initial GRE support (issue #415)
   - viewer - expanding info didn't work (issue #416)
 
-0.12.0 2015/06/XX
+0.12.0 2015/11/09
   - NOTICE: libcurl (>= 7.21.7) is now required, sorry
   - NOTICE: db.pl upgrade is required
   - NOTICE: duplicate items in available both in tags and elsewhere have been 
@@ -38,6 +38,13 @@
   - db - Require 1.4.x or later
   - db - Removed "index.codec.bloom.load=false"
   - db - Added warning for ES below 1.6.2
+  - wise - use native hashtable, required for threatstream
+  - viewer - fixed addTags to work with session that have no tags
+  - capture - fixed multiple smtp, smb and ssh buffer overflow read/writes (reported by jbremer)
+  - viewer - fixed multiple XSS injections (reported by jbremer)
+  - viewer - fixed crash when viewing large mime messages
+  - capture - irc detection improvement
+  - capture - --quiet flag (issue #427)
 
 0.11.5 2015/06/02
   - NOTICE: Only ES 1.[45].x is supported by this version. 

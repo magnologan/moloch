@@ -38,7 +38,7 @@ extern unsigned char    moloch_char_to_hexstr[256][3];
 void
 tls_certinfo_process(MolochCertInfo_t *ci, BSB *bsb)
 {
-    int apc, atag, alen;
+    uint32_t apc, atag, alen;
     char lastOid[1000];
     lastOid[0] = 0;
 
@@ -81,7 +81,7 @@ tls_certinfo_process(MolochCertInfo_t *ci, BSB *bsb)
 void
 tls_alt_names(MolochCertsInfo_t *certs, BSB *bsb, char *lastOid)
 {
-    int apc, atag, alen;
+    uint32_t apc, atag, alen;
 
     while (BSB_REMAINING(*bsb) >= 2) {
         unsigned char *value = moloch_parsers_asn_get_tlv(bsb, &apc, &atag, &alen);
@@ -277,7 +277,7 @@ static __thread GChecksum *checksum;
         DLL_INIT(s_, &certs->subject.commonName);
         DLL_INIT(s_, &certs->issuer.commonName);
 
-        int            atag, alen, apc;
+        uint32_t       atag, alen, apc;
         unsigned char *value;
 
         BSB            bsb;
