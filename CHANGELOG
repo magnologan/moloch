@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 0.13.0 2015/11/XX
   - NOTICE: libnids is no longer required
   - NOTICE: You'll want to rerun configure if using the same build directory
@@ -8,6 +9,11 @@
   - capture - more stats
   - all - initial GRE support (issue #415)
   - viewer - expanding info didn't work (issue #416)
+
+0.12.1 2015/11/10
+  - capture - fixed startup glib error
+  - configure - fixed version number
+  - easybutton - ES 1.7.3
 
 0.12.0 2015/11/09
   - NOTICE: libcurl (>= 7.21.7) is now required, sorry
