@@ -128,7 +128,7 @@ void smb_security_blob(MolochSession_t *session, unsigned char *data, int len)
         BSB_LIMPORT_u32(bsb, offsets[i]);
 
         if (offsets[i] > BSB_SIZE(bsb) || lens[i] > BSB_SIZE(bsb) || offsets[i] + lens[i] > BSB_SIZE(bsb)) {
-            moloch_nids_add_tag(session, "smb:bad-security-blob");
+            moloch_session_add_tag(session, "smb:bad-security-blob");
             return;
         }
     }
@@ -574,7 +574,7 @@ void smb_classify(MolochSession_t *session, const unsigned char *data, int UNUSE
     if (moloch_nids_has_protocol(session, "smb"))
         return;
 
-    moloch_nids_add_protocol(session, "smb");
+    moloch_session_add_protocol(session, "smb");
 
     SMBInfo_t            *smb          = MOLOCH_TYPE_ALLOC0(SMBInfo_t);
 

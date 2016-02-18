@@ -23,7 +23,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <pthread.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include "moloch.h"
@@ -51,11 +50,11 @@ typedef struct moloch_output {
 static MolochDiskOutput_t   *output;
 
 static MolochDiskOutput_t    outputQ;
-static pthread_mutex_t       outputQMutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t        outputQCond = PTHREAD_COND_INITIALIZER;
+static MOLOCH_LOCK_DEFINE(outputQ);
+static MOLOCH_COND_DEFINE(outputQ);
 
 static MolochIntHead_t       freeOutputBufs;
-static pthread_mutex_t       freeOutputMutex = PTHREAD_MUTEX_INITIALIZER;
+static MOLOCH_LOCK_DEFINE(freeOutputBufs);
 
 static uint32_t              outputId;
 static char                 *outputFileName;
@@ -73,9 +72,10 @@ static int                   pageSize;
 /******************************************************************************/
 uint32_t writer_disk_queue_length_thread()
 {
-    pthread_mutex_lock(&outputQMutex);
+
+    MOLOCH_LOCK(outputQ);
     int count = DLL_COUNT(mo_, &outputQ);
-    pthread_mutex_unlock(&outputQMutex);
+    MOLOCH_UNLOCK(outputQ);
     return count;
 }
 /******************************************************************************/
@@ -87,7 +87,7 @@ uint32_t writer_disk_queue_length_nothread()
 void writer_disk_alloc_buf(MolochDiskOutput_t *out)
 {
     if (writeMethod & MOLOCH_WRITE_THREAD)
-        pthread_mutex_lock(&freeOutputMutex);
+        MOLOCH_LOCK(freeOutputBufs);
 
     if (freeOutputBufs.i_count > 0) {
         MolochInt_t *tmp;
@@ -98,13 +98,13 @@ void writer_disk_alloc_buf(MolochDiskOutput_t *out)
     }
 
     if (writeMethod & MOLOCH_WRITE_THREAD)
-        pthread_mutex_unlock(&freeOutputMutex);
+        MOLOCH_UNLOCK(freeOutputBufs);
 }
 /******************************************************************************/
 void writer_disk_free_buf(MolochDiskOutput_t *out)
 {
     if (writeMethod & MOLOCH_WRITE_THREAD)
-        pthread_mutex_lock(&freeOutputMutex);
+        MOLOCH_LOCK(freeOutputBufs);
 
     if (freeOutputBufs.i_count > (int)config.maxFreeOutputBuffers) {
         munmap(out->buf, config.pcapWriteSize + 8192);
@@ -115,7 +115,7 @@ void writer_disk_free_buf(MolochDiskOutput_t *out)
     out->buf = 0;
 
     if (writeMethod & MOLOCH_WRITE_THREAD)
-        pthread_mutex_unlock(&freeOutputMutex);
+        MOLOCH_UNLOCK(freeOutputBufs);
 }
 /******************************************************************************/
 gboolean writer_disk_output_cb(gint fd, GIOCondition UNUSED(cond), gpointer UNUSED(data))
@@ -205,12 +205,13 @@ void *writer_disk_output_thread(void *UNUSED(arg))
 
     while (1) {
         uint64_t filelen = 0;
-        pthread_mutex_lock(&outputQMutex);
+
+        MOLOCH_LOCK(outputQ);
         while (DLL_COUNT(mo_, &outputQ) == 0) {
-            pthread_cond_wait(&outputQCond, &outputQMutex);
+            MOLOCH_COND_WAIT(outputQ);
         }
         DLL_POP_HEAD(mo_, &outputQ, out);
-        pthread_mutex_unlock(&outputQMutex);
+        MOLOCH_UNLOCK(outputQ);
 
         if (!outputFd) {
             LOG("Opening %s", out->name);
@@ -281,11 +282,11 @@ void writer_disk_flush(gboolean all)
 
     int count;
     if (writeMethod & MOLOCH_WRITE_THREAD) {
-        pthread_mutex_lock(&outputQMutex);
+        MOLOCH_LOCK(outputQ);
         DLL_PUSH_TAIL(mo_, &outputQ, output);
         count = DLL_COUNT(mo_, &outputQ);
-        pthread_mutex_unlock(&outputQMutex);
-        pthread_cond_broadcast(&outputQCond);
+        MOLOCH_UNLOCK(outputQ);
+        MOLOCH_COND_BROADCAST(outputQ);
     } else {
         DLL_PUSH_TAIL(mo_, &outputQ, output);
         count = DLL_COUNT(mo_, &outputQ);

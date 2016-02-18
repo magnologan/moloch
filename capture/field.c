@@ -184,7 +184,7 @@ int moloch_field_define_text(char *text, int *shortcut)
 }
 /******************************************************************************/
 /* Changes ... to va_list */
-static void moloch_nids_add_field_proxy(char *group, char *kind, char *expression, char *friendlyName, char *dbField, char *help, ...)
+static void moloch_session_add_field_proxy(char *group, char *kind, char *expression, char *friendlyName, char *dbField, char *help, ...)
 {
     va_list args;
     va_start(args, help);
@@ -344,7 +344,7 @@ int moloch_field_define(char *group, char *kind, char *expression, char *friendl
             sprintf(friendlyName2, "%.*s ASN", fnlen-2, friendlyName);
             sprintf(help2, "GeoIP ASN string calculated from the %s", help);
             sprintf(rawField, "raw%s", dbField2);
-            moloch_nids_add_field_proxy(group, "textfield", expression2, friendlyName2, dbField2, help2, "rawField", rawField, NULL);
+            moloch_session_add_field_proxy(group, "textfield", expression2, friendlyName2, dbField2, help2, "rawField", rawField, NULL);
         }
 
         sprintf(dbField2, "rir%s", dbField);
@@ -373,7 +373,7 @@ int moloch_field_define(char *group, char *kind, char *expression, char *friendl
             sprintf(friendlyName2, "%s ASN", friendlyName);
             sprintf(rawField, "%s-asn.raw", dbField);
             sprintf(help2, "GeoIP ASN string calculated from the %s", help);
-            moloch_nids_add_field_proxy(group, "textfield", expression2, friendlyName2, dbField2, help2, "rawField", rawField, NULL);
+            moloch_session_add_field_proxy(group, "textfield", expression2, friendlyName2, dbField2, help2, "rawField", rawField, NULL);
         }
 
         sprintf(dbField2, "%s-rir", dbField);

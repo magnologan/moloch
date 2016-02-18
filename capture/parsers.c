@@ -168,23 +168,23 @@ void moloch_parsers_initial_tag(MolochSession_t *session)
     int i;
 
     if (config.nodeClass)
-        moloch_nids_add_tag(session, classTag);
+        moloch_session_add_tag(session, classTag);
 
     if (config.extraTags) {
         for (i = 0; config.extraTags[i]; i++) {
-            moloch_nids_add_tag(session, config.extraTags[i]);
+            moloch_session_add_tag(session, config.extraTags[i]);
         }
     }
 
     switch(session->protocol) {
     case IPPROTO_TCP:
-        moloch_nids_add_protocol(session, "tcp");
+        moloch_session_add_protocol(session, "tcp");
         break;
     case IPPROTO_UDP:
-        moloch_nids_add_protocol(session, "udp");
+        moloch_session_add_protocol(session, "udp");
         break;
     case IPPROTO_ICMP:
-        moloch_nids_add_protocol(session, "icmp");
+        moloch_session_add_protocol(session, "icmp");
         break;
     }
 }

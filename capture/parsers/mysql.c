@@ -51,7 +51,7 @@ int mysql_parser(MolochSession_t *session, void *uw, const unsigned char *data, 
         ptr++;
     }
 
-    moloch_nids_add_protocol(session, "mysql");
+    moloch_session_add_protocol(session, "mysql");
     moloch_field_string_add(versionField, session, info->version, info->versionLen, FALSE);
     info->version = 0;
 

@@ -126,7 +126,7 @@ void tagger_process_match(MolochSession_t *session, GPtrArray *infos)
         TaggerInfo_t *info = g_ptr_array_index(infos, f);
         TaggerFile_t *file = info->file;
         for (t = 0; file->tags[t]; t++) {
-            moloch_nids_add_tag(session, file->tags[t]);
+            moloch_session_add_tag(session, file->tags[t]);
         }
         TaggerOp_t *op;
         DLL_FOREACH(o_, &info->ops, op) {
@@ -139,7 +139,7 @@ void tagger_process_match(MolochSession_t *session, GPtrArray *infos)
             case  MOLOCH_FIELD_TYPE_IP_HASH:
             case  MOLOCH_FIELD_TYPE_IP_GHASH:
                 if (op->fieldPos == tagsField) {
-                    moloch_nids_add_tag(session, op->str);
+                    moloch_session_add_tag(session, op->str);
                 } else {
                     moloch_field_int_add(op->fieldPos, session, op->strLenOrInt);
                 }

@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "glib.h"
 #include "yara.h"
 #include "moloch.h"
 
@@ -79,11 +78,11 @@ int moloch_yara_callback(int message, YR_RULE* rule, MolochSession_t* session)
 
     if (message == CALLBACK_MSG_RULE_MATCHING) {
         snprintf(tagname, sizeof(tagname), "yara:%s", rule->identifier);
-        moloch_nids_add_tag(session, tagname);
+        moloch_session_add_tag(session, tagname);
         tag = rule->tags;
         while(tag != NULL && *tag) {
             snprintf(tagname, sizeof(tagname), "yara:%s", tag);
-            moloch_nids_add_tag(session, tagname);
+            moloch_session_add_tag(session, tagname);
             tag += strlen(tag) + 1;
         }
     }
@@ -172,11 +171,11 @@ int moloch_yara_callback(int message, YR_RULE* rule, MolochSession_t* session)
 
     if (message == CALLBACK_MSG_RULE_MATCHING) {
         snprintf(tagname, sizeof(tagname), "yara:%s", rule->identifier);
-        moloch_nids_add_tag(session, tagname);
+        moloch_session_add_tag(session, tagname);
         tag = rule->tags;
         while(tag != NULL && *tag) {
             snprintf(tagname, sizeof(tagname), "yara:%s", tag);
-            moloch_nids_add_tag(session, tagname);
+            moloch_session_add_tag(session, tagname);
             tag += strlen(tag) + 1;
         }
     }
@@ -268,12 +267,12 @@ int moloch_yara_callback(RULE* rule, MolochSession_t* session)
 
     if (rule->flags & RULE_FLAGS_MATCH) {
         snprintf(tagname, sizeof(tagname), "yara:%s", rule->identifier);
-        moloch_nids_add_tag(session, tagname);
+        moloch_session_add_tag(session, tagname);
         tag = rule->tag_list_head;
         while(tag != NULL) {
             if (tag->identifier) {
                 snprintf(tagname, sizeof(tagname), "yara:%s", tag->identifier);
-                moloch_nids_add_tag(session, tagname);
+                moloch_session_add_tag(session, tagname);
             }
             tag = tag->next;
         }

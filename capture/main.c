@@ -45,7 +45,6 @@ extern MolochWriterQueueLength moloch_writer_queue_length;
 
 /******************************************************************************/
 static gboolean showVersion    = FALSE;
-static gboolean needNidsExit   = TRUE;
 
 /******************************************************************************/
 gboolean moloch_debug_flag()
@@ -71,6 +70,7 @@ static GOptionEntry entries[] =
     { "quiet",     'q',                    0, G_OPTION_ARG_NONE,           &config.quiet,         "Turn off regular logging", NULL },
     { "copy",        0,                    0, G_OPTION_ARG_NONE,           &config.copyPcap,      "When in offline mode copy the pcap files into the pcapDir from the config file", NULL },
     { "dryrun",      0,                    0, G_OPTION_ARG_NONE,           &config.dryRun,        "dry run, noting written to databases or filesystem", NULL },
+    { "flush",       0,                    0, G_OPTION_ARG_NONE,           &config.flushBetween,  "In offline mode flush streams between files", NULL },
     { "nospi",       0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE,           &config.noSPI,         "no SPI data written to ES", NULL },
     { "tests",       0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_NONE,           &config.tests,         "Output test suite information", NULL },
     { NULL,          0, 0,                                    0,           NULL, NULL, NULL }
@@ -170,9 +170,11 @@ int moloch_size_free(void *mem)
 /******************************************************************************/
 void cleanup(int UNUSED(sig))
 {
+    signal(SIGINT, exit); // Double Control-C quits right away
+
     LOG("exiting");
-    if (needNidsExit)
-        moloch_nids_exit();
+    if (moloch_reader_stop)
+        moloch_reader_stop();
     moloch_plugins_exit();
     moloch_parsers_exit();
     moloch_yara_exit();
@@ -341,53 +343,6 @@ int moloch_int_cmp(const void *keyv, const void *elementv)
     return key == element->i_hash;
 }
 /******************************************************************************/
-void moloch_session_id (char *buf, uint32_t addr1, uint16_t port1, uint32_t addr2, uint16_t port2)
-{
-    if (addr1 < addr2) {
-        *(uint32_t *)buf = addr1;
-        *(uint16_t *)(buf+4) = port1;
-        *(uint32_t *)(buf+6) = addr2;
-        *(uint16_t *)(buf+10) = port2;
-    } else if (addr1 > addr2) {
-        *(uint32_t *)buf = addr2;
-        *(uint16_t *)(buf+4) = port2;
-        *(uint32_t *)(buf+6) = addr1;
-        *(uint16_t *)(buf+10) = port1;
-    } else if (ntohs(port1) < ntohs(port2)) {
-        *(uint32_t *)buf = addr1;
-        *(uint16_t *)(buf+4) = port1;
-        *(uint32_t *)(buf+6) = addr2;
-        *(uint16_t *)(buf+10) = port2;
-    } else {
-        *(uint32_t *)buf = addr2;
-        *(uint16_t *)(buf+4) = port2;
-        *(uint32_t *)(buf+6) = addr1;
-        *(uint16_t *)(buf+10) = port1;
-    }
-}
-/******************************************************************************/
-/* Must match moloch_session_cmp and moloch_session_id
- * a1 0-3
- * p1 4-5
- * a2 6-9
- * p2 10-11
- */
-uint32_t moloch_session_hash(const void *key)
-{
-    unsigned char *p = (unsigned char *)key;
-    //return ((p[2] << 16 | p[3] << 8 | p[4]) * 59) ^ (p[8] << 16 | p[9] << 8 |  p[10]);
-    return (((p[1]<<24) ^ (p[2]<<18) ^ (p[3]<<12) ^ (p[4]<<6) ^ p[5]) * 13) ^ (p[8]<<24|p[9]<<16 | p[10]<<8 | p[11]);
-}
-
-/******************************************************************************/
-int moloch_session_cmp(const void *keyv, const void *elementv)
-{
-    MolochSession_t *session = (MolochSession_t *)elementv;
-
-    return (*(uint64_t *)keyv     == session->sessionIda &&
-            *(uint32_t *)(keyv+8) == session->sessionIdb);
-}
-/******************************************************************************/
 typedef struct {
     MolochWatchFd_func  func;
     gpointer            data;
@@ -479,9 +434,14 @@ void moloch_add_can_quit (MolochCanQuitFunc func)
  */
 gboolean moloch_quit_gfunc (gpointer UNUSED(user_data))
 {
-    if (needNidsExit) {
-        needNidsExit = FALSE;
-        moloch_nids_exit();
+static gboolean firstRun   = TRUE;
+
+// On the first run shutdown reader and stuff
+    if (firstRun) {
+        firstRun = FALSE;
+        moloch_readers_exit();
+        moloch_packet_exit();
+        moloch_session_exit();
         return TRUE;
     }
 
@@ -501,17 +461,34 @@ void moloch_quit()
 }
 /******************************************************************************/
 /*
- * Don't actually init nids/pcap until all the pre tags are loaded
+ * Don't actually init nids/pcap until all the pre tags are loaded.
+ * TRUE - call again in 1ms
+ * FALSE - don't call again
  */
-gboolean moloch_nids_init_gfunc (gpointer UNUSED(user_data))
+gboolean moloch_ready_gfunc (gpointer UNUSED(user_data))
 {
-    if (moloch_db_tags_loading() == 0 && moloch_http_queue_length(esServer) == 0) {
-        if (config.debug)
-            LOG("maxField = %d", config.maxField);
-        moloch_nids_init();
-        return FALSE;
+    if (moloch_db_tags_loading() || moloch_http_queue_length(esServer))
+        return TRUE;
+
+    if (config.debug)
+        LOG("maxField = %d", config.maxField);
+
+    if (config.pcapReadOffline) {
+        if (config.dryRun || !config.copyPcap) {
+            moloch_writers_start("inplace");
+        } else {
+            moloch_writers_start(NULL);
+        }
+
+    } else {
+        if (config.dryRun) {
+            moloch_writers_start("null");
+        } else {
+            moloch_writers_start(NULL);
+        }
     }
-    return TRUE;
+    moloch_reader_start();
+    return FALSE;
 }
 /******************************************************************************/
 void moloch_hex_init()
@@ -584,10 +561,16 @@ int main(int argc, char **argv)
     mainLoop = g_main_loop_new(NULL, FALSE);
 
     parse_args(argc, argv);
+    moloch_hex_init();
     moloch_config_init();
     moloch_writers_init();
-    moloch_hex_init();
-    moloch_nids_root_init();
+    moloch_readers_init();
+    moloch_plugins_init();
+    moloch_plugins_load(config.rootPlugins);
+    if (config.pcapReadOffline)
+        moloch_readers_set("libpcap-file");
+    else
+        moloch_readers_set("libpcap");
     if (!config.pcapReadOffline) {
         moloch_drop_privileges();
         config.copyPcap = 1;
@@ -596,11 +579,13 @@ int main(int argc, char **argv)
     moloch_field_init();
     moloch_http_init();
     moloch_db_init();
+    moloch_packet_init();
     moloch_config_load_local_ips();
     moloch_yara_init();
     moloch_parsers_init();
-    moloch_plugins_init();
-    g_timeout_add(1, moloch_nids_init_gfunc, 0);
+    moloch_session_init();
+    moloch_plugins_load(config.plugins);
+    g_timeout_add(1, moloch_ready_gfunc, 0);
 
     g_main_loop_run(mainLoop);
     cleanup(0);

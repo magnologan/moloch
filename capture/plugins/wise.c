@@ -183,7 +183,7 @@ void wise_process_ops(MolochSession_t *session, WiseItem_t *wi)
         case  MOLOCH_FIELD_TYPE_INT_HASH:
         case  MOLOCH_FIELD_TYPE_INT_GHASH:
             if (op->fieldPos == tagsField) {
-                moloch_nids_add_tag(session, op->str);
+                moloch_session_add_tag(session, op->str);
                 continue;
             }
             // Fall Thru

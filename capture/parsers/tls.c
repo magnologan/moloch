@@ -584,7 +584,7 @@ void tls_classify(MolochSession_t *session, const unsigned char *data, int len, 
      * 1 Message Type 1 - Client Hello, 2 Server Hello
      */
     if (data[2] <= 0x03 && (data[5] == 1 || data[5] == 2)) {
-        moloch_nids_add_protocol(session, "tls");
+        moloch_session_add_protocol(session, "tls");
 
         TLSInfo_t  *tls = MOLOCH_TYPE_ALLOC(TLSInfo_t);
         tls->len        = 0;

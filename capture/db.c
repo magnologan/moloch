@@ -27,7 +27,6 @@
 #include <fcntl.h>
 #include "moloch.h"
 #include "bsb.h"
-#include "glib.h"
 #include "patricia.h"
 #include "GeoIP.h"
 
@@ -68,7 +67,7 @@ typedef struct moloch_tag {
     short              tag_count;
 } MolochTag_t;
 
-HASH_VAR(tag_, tags, MolochTag_t, 9337);
+HASH_VAR(tag_, tags, MolochTag_t, 19991);
 
 /******************************************************************************/
 void moloch_db_add_local_ip(char *str, MolochIpInfo_t *ii)
@@ -1115,7 +1114,7 @@ void moloch_db_update_stats()
 
     char *json = moloch_http_get_buffer(MOLOCH_HTTP_BUFFER_SIZE);
 
-    uint64_t totalDropped = moloch_nids_dropped_packets();
+    uint64_t totalDropped = moloch_packet_dropped_packets();
 
     for (i = 0; config.pcapDir[i]; i++) {
         struct statvfs vfs;
@@ -1144,6 +1143,8 @@ void moloch_db_update_stats()
         "\"memory\": %" PRIu64 ", "
         "\"cpu\": %" PRIu64 ", "
         "\"diskQueue\": %u, "
+        "\"esQueue\": %u, "
+        "\"magicQueue\": %u, "
         "\"totalPackets\": %" PRIu64 ", "
         "\"totalK\": %" PRIu64 ", "
         "\"totalSessions\": %" PRIu64 ", "
@@ -1157,10 +1158,12 @@ void moloch_db_update_stats()
         config.hostName,
         (uint32_t)currentTime.tv_sec,
         freeSpaceM,
-        moloch_nids_monitoring_sessions(),
+        moloch_session_monitoring(),
         moloch_db_memory_size(),
         diffusage*10000/diffms,
         moloch_writer_queue_length?moloch_writer_queue_length():0,
+        moloch_http_queue_length(esServer),
+        moloch_parsers_magic_outstanding(),
         dbTotalPackets,
         dbTotalK,
         dbTotalSessions,
@@ -1206,7 +1209,7 @@ void moloch_db_update_dstats(int n)
         lastTime[n] = startTime;
     }
 
-    uint64_t totalDropped = moloch_nids_dropped_packets();
+    uint64_t totalDropped = moloch_packet_dropped_packets();
 
     for (i = 0; config.pcapDir[i]; i++) {
         struct statvfs vfs;
@@ -1233,6 +1236,8 @@ void moloch_db_update_dstats(int n)
         "\"memory\": %" PRIu64 ", "
         "\"cpu\": %" PRIu64 ", "
         "\"diskQueue\": %u, "
+        "\"esQueue\": %u, "
+        "\"magicQueue\": %u, "
         "\"deltaPackets\": %" PRIu64 ", "
         "\"deltaBytes\": %" PRIu64 ", "
         "\"deltaSessions\": %" PRIu64 ", "
@@ -1243,10 +1248,12 @@ void moloch_db_update_dstats(int n)
         intervals[n],
         cursec,
         freeSpaceM,
-        moloch_nids_monitoring_sessions(),
+        moloch_session_monitoring(),
         moloch_db_memory_size(),
         diffusage*10000/diffms,
         moloch_writer_queue_length?moloch_writer_queue_length():0,
+        moloch_http_queue_length(esServer),
+        moloch_parsers_magic_outstanding(),
         (totalPackets - lastPackets[n]),
         (totalBytes - lastBytes[n]),
         (totalSessions - lastSessions[n]),
