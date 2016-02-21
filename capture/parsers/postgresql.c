@@ -12,9 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
 #include "moloch.h"
 
 typedef struct {
@@ -91,7 +88,7 @@ void postgresql_free(MolochSession_t UNUSED(*session), void *uw)
 /******************************************************************************/
 void postgresql_classify(MolochSession_t *session, const unsigned char UNUSED(*data), int UNUSED(len), int which)
 {
-    if (moloch_nids_has_protocol(session, "postgresql"))
+    if (moloch_session_has_protocol(session, "postgresql"))
         return;
 
     if ((len == 8 && memcmp(data+3, "\x08\x04\xd2\x16\x2f", 5) == 0) ||

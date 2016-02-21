@@ -14,14 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+
+#include "moloch.h"
 #include <pwd.h>
 #include <grp.h>
 #include <errno.h>
-#include <ctype.h>
 #include <sys/resource.h>
 #ifdef _POSIX_MEMLOCK
 #include <sys/mman.h>
@@ -30,7 +27,6 @@
 #include <sched.h>
 #endif
 #include "pcap.h"
-#include "moloch.h"
 #include "molochconfig.h"
 
 /******************************************************************************/
@@ -553,6 +549,8 @@ void moloch_mlockall_init()
 /******************************************************************************/
 int main(int argc, char **argv)
 {
+    LOG("THREAD %p", pthread_self());
+
     signal(SIGHUP, reload);
     signal(SIGINT, cleanup);
     signal(SIGUSR1, exit);

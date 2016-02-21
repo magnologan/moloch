@@ -1,7 +1,7 @@
 /******************************************************************************/
 /* reader-libpcap-file.c  -- Reader using libpcap to a file
  *
- * Copyright 2012-2015 AOL Inc. All rights reserved.
+ * Copyright 2012-2016 AOL Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this Software except in compliance with the License.
@@ -16,15 +16,11 @@
  * limitations under the License.
  */
 #define _FILE_OFFSET_BITS 64
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
+#include "moloch.h"
 #include <errno.h>
 #include <sys/stat.h>
 #include <gio/gio.h>
 #include "pcap.h"
-#include "moloch.h"
 
 extern MolochPcapFileHdr_t   pcapFileHeader;
 
@@ -57,19 +53,19 @@ void reader_libpcap_pcap_cb(u_char *UNUSED(user), const struct pcap_pkthdr *h, c
         exit (0);
     }
 
-    MolochPacket_t packet = 
-    {
-        .pkt     = bytes,
-        .ts      = h->ts,
-        .pktlen  = h->len,
-        .filepos = 0
-    };
+    MolochPacket_t *packet = MOLOCH_TYPE_ALLOC0(MolochPacket_t);
 
-    moloch_packet(&packet);
+    packet->pkt           = bytes,
+    packet->ts            = h->ts,
+    packet->pktlen        = h->len,
+
+    moloch_packet(packet);
 }
 /******************************************************************************/
 static void *reader_libpcap_thread()
 {
+    LOG("THREAD %p", pthread_self());
+
     while (1) {
         int r = pcap_loop(pcap, -1, reader_libpcap_pcap_cb, NULL);
 
@@ -104,6 +100,20 @@ void reader_libpcap_start() {
                 LOG("ERROR - Couldn't compile filter: '%s' with %s", config.dontSaveBPFs[i], pcap_geterr(pcap));
                 exit(1);
             }
+        }
+    }
+
+    if (config.bpf) {
+        struct bpf_program   bpf;
+
+        if (pcap_compile(pcap, &bpf, config.bpf, 1, PCAP_NETMASK_UNKNOWN) == -1) {
+            LOG("ERROR - Couldn't compile filter: '%s' with %s", config.bpf, pcap_geterr(pcap));
+            exit(1);
+        }
+
+	if (pcap_setfilter(pcap, &bpf) == -1) {
+            LOG("ERROR - Couldn't set filter: '%s' with %s", config.bpf, pcap_geterr(pcap));
+            exit(1);
         }
     }
 

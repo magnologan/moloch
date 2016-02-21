@@ -12,13 +12,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include "moloch.h"
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 //#define EMAILDEBUG
 
@@ -819,7 +815,7 @@ void smtp_classify(MolochSession_t *session, const unsigned char *data, int len,
         (memcmp("220 ", data, 4) == 0 &&
          g_strstr_len((char *)data, len, "SMTP") != 0)) {
 
-        if (moloch_nids_has_protocol(session, "smtp"))
+        if (moloch_session_has_protocol(session, "smtp"))
             return;
 
         moloch_session_add_protocol(session, "smtp");

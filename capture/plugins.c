@@ -15,15 +15,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include "moloch.h"
 #include <inttypes.h>
 #include <errno.h>
-#include <ctype.h>
 #include "gmodule.h"
-#include "moloch.h"
 
 /******************************************************************************/
 extern MolochConfig_t        config;
@@ -340,16 +335,6 @@ void moloch_plugins_cb_udp(MolochSession_t *session, struct udphdr *udphdr, unsi
     HASH_FORALL(p_, plugins, plugin,
         if (plugin->udpFunc)
             plugin->udpFunc(session, udphdr, data, len);
-    );
-}
-/******************************************************************************/
-void moloch_plugins_cb_ip(MolochSession_t *session, struct ip *packet, int len)
-{
-    MolochPlugin_t *plugin;
-
-    HASH_FORALL(p_, plugins, plugin,
-        if (plugin->ipFunc)
-            plugin->ipFunc(session, packet, len);
     );
 }
 /******************************************************************************/

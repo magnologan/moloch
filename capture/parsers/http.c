@@ -12,13 +12,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
+#include "moloch.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <netinet/in.h>
-#include "moloch.h"
 
 //#define HTTPDEBUG 1
 
@@ -624,7 +620,7 @@ void http_free(MolochSession_t UNUSED(*session), void *uw)
 /******************************************************************************/
 void http_classify(MolochSession_t *session, const unsigned char *UNUSED(data), int UNUSED(len), int UNUSED(which))
 {
-    if (moloch_nids_has_protocol(session, "http"))
+    if (moloch_session_has_protocol(session, "http"))
         return;
 
     moloch_session_add_protocol(session, "http");

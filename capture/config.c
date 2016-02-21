@@ -16,14 +16,9 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <ctype.h>
+#include "moloch.h"
 #include <fcntl.h>
 #include <inttypes.h>
-#include "moloch.h"
 
 extern MolochConfig_t        config;
 
@@ -366,7 +361,6 @@ void moloch_config_load()
     config.maxFreeOutputBuffers  = moloch_config_int(keyfile, "maxFreeOutputBuffers", 50, 0, 0xffff);
 
     config.packetThreads         = moloch_config_int(keyfile, "packetThreads", 1, 1, MOLOCH_MAX_PACKET_THREADS);
-    config.magicThreads          = moloch_config_int(keyfile, "magicThreads", 0, 0, 16);
 
 
     config.logUnknownProtocols   = moloch_config_boolean(keyfile, "logUnknownProtocols", config.debug);
@@ -633,7 +627,6 @@ void moloch_config_init()
         LOG("maxFreeOutputBuffers: %u", config.maxFreeOutputBuffers);
 
         LOG("packetThreads: %d", config.packetThreads);
-        LOG("magicThreads: %d", config.magicThreads);
 
         LOG("logUnknownProtocols: %s", (config.logUnknownProtocols?"true":"false"));
         LOG("logESRequests: %s", (config.logESRequests?"true":"false"));

@@ -1,7 +1,7 @@
 /******************************************************************************/
 /* reader-libpcap-file.c  -- Reader using libpcap to a file
  *
- * Copyright 2012-2015 AOL Inc. All rights reserved.
+ * Copyright 2012-2016 AOL Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this Software except in compliance with the License.
@@ -16,15 +16,11 @@
  * limitations under the License.
  */
 #define _FILE_OFFSET_BITS 64
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
+#include "moloch.h"
 #include <errno.h>
 #include <sys/stat.h>
 #include <gio/gio.h>
 #include "pcap.h"
-#include "moloch.h"
 
 extern MolochPcapFileHdr_t   pcapFileHeader;
 
@@ -327,18 +323,18 @@ int reader_libpcapfile_stats(MolochReaderStats_t *stats)
 /******************************************************************************/
 void reader_libpcapfile_pcap_cb(u_char *UNUSED(user), const struct pcap_pkthdr *h, const u_char *bytes)
 {
-    MolochPacket_t packet;
+    MolochPacket_t *packet = MOLOCH_TYPE_ALLOC0(MolochPacket_t);
 
     if (h->caplen != h->len) {
         LOG("ERROR - Moloch requires full packet captures caplen: %d pktlen: %d", h->caplen, h->len);
         exit (0);
     }
 
-    packet.pkt     = bytes;
-    packet.ts      = h->ts;
-    packet.pktlen  = h->len;
-    packet.filepos = ftell(offlineFile) - 16 - h->len;
-    moloch_packet(&packet);
+    packet->pkt           = bytes;
+    packet->ts            = h->ts;
+    packet->pktlen        = h->len;
+    packet->readerFilePos = ftell(offlineFile) - 16 - h->len;
+    moloch_packet(packet);
 }
 /******************************************************************************/
 gboolean reader_libpcapfile_read()
@@ -390,6 +386,20 @@ void reader_libpcapfile_opened()
 
     if (offlineFile && moloch_writer_next_input)
         moloch_writer_next_input(offlineFile, offlinePcapFilename);
+    
+    if (config.bpf) {
+        struct bpf_program   bpf;
+
+        if (pcap_compile(pcap, &bpf, config.bpf, 1, PCAP_NETMASK_UNKNOWN) == -1) {
+            LOG("ERROR - Couldn't compile filter: '%s' with %s", config.bpf, pcap_geterr(pcap));
+            exit(1);
+        }
+
+	if (pcap_setfilter(pcap, &bpf) == -1) {
+            LOG("ERROR - Couldn't set filter: '%s' with %s", config.bpf, pcap_geterr(pcap));
+            exit(1);
+        }
+    }
 
     if (config.dontSaveBPFs) {
         int i;
@@ -398,10 +408,10 @@ void reader_libpcapfile_opened()
                 pcap_freecode(&bpf_programs[i]);
             }
         } else {
-            bpf_programs= malloc(config.dontSaveBPFsNum*sizeof(struct bpf_program));
+            bpf_programs = malloc(config.dontSaveBPFsNum*sizeof(struct bpf_program));
         }
         for (i = 0; i < config.dontSaveBPFsNum; i++) {
-            if (pcap_compile(pcap, &bpf_programs[i], config.dontSaveBPFs[i], 0, PCAP_NETMASK_UNKNOWN) == -1) {
+            if (pcap_compile(pcap, &bpf_programs[i], config.dontSaveBPFs[i], 1, PCAP_NETMASK_UNKNOWN) == -1) {
                 LOG("ERROR - Couldn't compile filter: '%s' with %s", config.dontSaveBPFs[i], pcap_geterr(pcap));
                 exit(1);
             }

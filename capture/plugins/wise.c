@@ -26,8 +26,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include "moloch.h"
-#include "nids.h"
-#include "bsb.h"
 
 extern MolochConfig_t        config;
 
@@ -222,13 +220,21 @@ void wise_free_item(WiseItem_t *wi)
     HASH_REMOVE(wih_, itemHash[(int)wi->type], wi);
     if (wi->sessions) {
         for (i = 0; i < wi->numSessions; i++) {
-            moloch_nids_decr_outstanding(wi->sessions[i]);
+            moloch_session_decr_outstanding(wi->sessions[i]);
         }
         g_free(wi->sessions);
     }
     g_free(wi->key);
     wise_free_ops(wi);
     MOLOCH_TYPE_FREE(WiseItem_t, wi);
+}
+/******************************************************************************/
+void wise_session_cmd_cb(MolochSession_t *session, gpointer uw1, gpointer UNUSED(uw2))
+{
+    WiseItem_t    *wi = uw1;
+
+    wise_process_ops(session, wi);
+    moloch_session_decr_outstanding(session);
 }
 /******************************************************************************/
 void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
@@ -318,8 +324,7 @@ void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
 
         int s;
         for (s = 0; s < wi->numSessions; s++) {
-            wise_process_ops(wi->sessions[s], wi);
-            moloch_nids_decr_outstanding(wi->sessions[s]);
+            moloch_session_add_cmd(wi->sessions[s], MOLOCH_SES_CMD_FUNC, wi, NULL, wise_session_cmd_cb);
         }
         g_free(wi->sessions);
         wi->sessions = 0;
@@ -359,7 +364,7 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
         if (wi->sessions) {
             if (wi->numSessions < wi->sessionsSize) {
                 wi->sessions[wi->numSessions++] = session;
-                moloch_nids_incr_outstanding(session);
+                moloch_session_incr_outstanding(session);
             }
             stats[type][INTEL_STAT_INPROGRESS]++;
             return;
@@ -388,7 +393,7 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
 
     wi->sessions = malloc(sizeof(MolochSession_t *) * wi->sessionsSize);
     wi->sessions[wi->numSessions++] = session;
-    moloch_nids_incr_outstanding(session);
+    moloch_session_incr_outstanding(session);
 
     stats[type][INTEL_STAT_REQUEST]++;
 

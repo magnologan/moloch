@@ -12,9 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
 #include "moloch.h"
 #include "tls-cipher.h"
 
@@ -574,7 +571,7 @@ void tls_classify(MolochSession_t *session, const unsigned char *data, int len, 
     if (len < 6 || data[2] > 0x03)
         return;
 
-    if (moloch_nids_has_protocol(session, "tls"))
+    if (moloch_session_has_protocol(session, "tls"))
         return;
 
 

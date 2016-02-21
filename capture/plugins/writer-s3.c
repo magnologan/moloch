@@ -381,11 +381,11 @@ void writer_s3_exit()
     writer_s3_flush(TRUE);
 }
 /******************************************************************************/
-extern struct pcap_file_header pcapFileHeader;
-void writer_s3_create(const struct pcap_pkthdr *h)
+extern MolochPcapFileHdr_t pcapFileHeader;
+void writer_s3_create(const MolochPacket_t *packet)
 {
     char               filename[1000];
-    struct tm         *tmp = localtime(&h->ts.tv_sec);
+    struct tm         *tmp = localtime(&packet->ts.tv_sec);
     int                offset = 0;
 
     snprintf(filename, sizeof(filename), "s3://%s/%s/%s/#NUMHEX#-%02d%02d%02d-#NUM#.pcap", s3Region, s3Bucket, config.nodeName, tmp->tm_year%100, tmp->tm_mon+1, tmp->tm_mday);
@@ -396,7 +396,7 @@ void writer_s3_create(const struct pcap_pkthdr *h)
     DLL_INIT(os3_, &currentFile->outputQ);
     DLL_PUSH_TAIL(fs3_, &fileQ, currentFile);
 
-    currentFile->outputFileName = moloch_db_create_file(nids_last_pcap_header->ts.tv_sec, filename, 0, 0, &outputId);
+    currentFile->outputFileName = moloch_db_create_file(packet->ts.tv_sec, filename, 0, 0, &outputId);
     currentFile->outputPath = currentFile->outputFileName + offset;
     outputFilePos = 24;
 
@@ -421,24 +421,24 @@ struct pcap_sf_pkthdr {
     uint32_t len;		/* length this packet (off wire) */
 };
 void
-writer_s3_write(const struct pcap_pkthdr *h, const u_char *sp, uint32_t *fileNum, uint64_t *filePos)
+writer_s3_write(const MolochPacket_t *packet, uint32_t *fileNum, uint64_t *filePos)
 {
     struct pcap_sf_pkthdr hdr;
 
-    hdr.ts.tv_sec  = h->ts.tv_sec;
-    hdr.ts.tv_usec = h->ts.tv_usec;
-    hdr.caplen     = h->caplen;
-    hdr.len        = h->len;
+    hdr.ts.tv_sec  = packet->ts.tv_sec;
+    hdr.ts.tv_usec = packet->ts.tv_usec;
+    hdr.caplen     = packet->pktlen;
+    hdr.len        = packet->pktlen;
 
     if (!currentFile) {
-        writer_s3_create(h);
+        writer_s3_create(packet);
     }
 
     memcpy(outputBuffer + outputPos, (char *)&hdr, sizeof(hdr));
     outputPos += sizeof(hdr);
 
-    memcpy(outputBuffer + outputPos, sp, h->caplen);
-    outputPos += h->caplen;
+    memcpy(outputBuffer + outputPos, packet->pkt, packet->pktlen);
+    outputPos += packet->pktlen;
 
     if(outputPos > config.pcapWriteSize) {
         writer_s3_flush(FALSE);
@@ -446,7 +446,7 @@ writer_s3_write(const struct pcap_pkthdr *h, const u_char *sp, uint32_t *fileNum
 
     *fileNum = outputId;
     *filePos = outputFilePos;
-    outputFilePos += 16 + h->caplen;
+    outputFilePos += 16 + packet->pktlen;
 
     if (outputFilePos >= config.maxFileSizeB) {
         writer_s3_flush(TRUE);

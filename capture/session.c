@@ -1,6 +1,6 @@
 /* session.c  -- Session functions
  *
- * Copyright 2012-2015 AOL Inc. All rights reserved.
+ * Copyright 2012-2016 AOL Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this Software except in compliance with the License.
@@ -15,10 +15,6 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 #include <arpa/inet.h>
 #include "moloch.h"
 
@@ -32,15 +28,31 @@ extern time_t                lastPacketSecs;
 static int                   tagsField;
 static int                   protocolField;
 
-static MolochSessionHead_t   closingQ;
-MolochSessionHead_t          tcpWriteQ;
-MOLOCH_LOCK_DEFINE(tcpWriteQ);
+static MolochSessionHead_t   closingQ[MOLOCH_MAX_PACKET_THREADS];
+MolochSessionHead_t          tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
 
 typedef HASHP_VAR(h_, MolochSessionHash_t, MolochSessionHead_t);
 
 static MolochSessionHead_t   sessionsQ[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
 static MolochSessionHash_t   sessions[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
-static MOLOCH_LOCK_DEFINE(sessions);
+
+typedef struct molochsescmd {
+    struct molochsescmd *cmd_next, *cmd_prev;
+
+    MolochSession_t *session;
+    MolochSesCmd     cmd;
+    gpointer         uw1;
+    gpointer         uw2;
+    MolochCmd_func   func;
+} MolochSesCmd_t;
+
+typedef struct {
+    struct molochsescmd *cmd_next, *cmd_prev;
+    int                  cmd_count;
+    MOLOCH_LOCK_EXTERN(lock);
+} MolochSesCmdHead_t;
+
+static MolochSesCmdHead_t   sessionCmds[MOLOCH_MAX_PACKET_THREADS];
 
 /******************************************************************************/
 void moloch_session_id (char *buf, uint32_t addr1, uint16_t port1, uint32_t addr2, uint16_t port2)
@@ -115,17 +127,34 @@ int moloch_session_cmp(const void *keyv, const void *elementv)
             *(uint32_t *)(keyv+8) == session->sessionIdb);
 }
 /******************************************************************************/
+void moloch_session_add_cmd(MolochSession_t *session, MolochSesCmd icmd, gpointer uw1, gpointer uw2, MolochCmd_func func)
+{
+    MolochSesCmd_t *cmd = MOLOCH_TYPE_ALLOC(MolochSesCmd_t);
+    cmd->cmd = icmd;
+    cmd->session = session;
+    cmd->uw1 = uw1;
+    cmd->uw2 = uw2;
+    cmd->func = func;
+    MOLOCH_LOCK(sessionCmds[session->thread].lock);
+    DLL_PUSH_TAIL(cmd_, &sessionCmds[session->thread], cmd);
+    MOLOCH_UNLOCK(sessionCmds[session->thread].lock);
+    moloch_packet_thread_wake(session->thread);
+}
+/******************************************************************************/
 void moloch_session_get_tag_cb(void *sessionV, int tagType, const char *tagName, uint32_t tag, gboolean async)
 {
     MolochSession_t *session = sessionV;
 
     if (tag == 0) {
         LOG("ERROR - Not adding tag %s type %d couldn't get tag num", tagName, tagType);
+        moloch_session_decr_outstanding(session);
+    } else if (async) {
+        moloch_session_add_cmd(session, MOLOCH_SES_CMD_ADD_TAG, (gpointer)(long)tagType, (gpointer)(long)tag, NULL);
     } else {
         moloch_field_int_add(tagType, session, tag);
+        moloch_session_decr_outstanding(session);
     }
 
-    moloch_session_decr_outstanding(session);
 }
 /******************************************************************************/
 gboolean moloch_session_has_tag(MolochSession_t *session, const char *tagName)
@@ -192,24 +221,18 @@ void moloch_session_mark_for_close (MolochSession_t *session, int ses)
 {
     session->closingQ = 1;
     session->saveTime = session->lastPacket.tv_sec + 5;
-    MOLOCH_LOCK(sessions);
-    DLL_REMOVE(q_, &sessionsQ[ses], session);
-    DLL_PUSH_TAIL(q_, &closingQ, session);
-    MOLOCH_UNLOCK(sessions);
+    DLL_REMOVE(q_, &sessionsQ[session->thread][ses], session);
+    DLL_PUSH_TAIL(q_, &closingQ[session->thread], session);
 
     if (session->tcp_next) {
-        MOLOCH_LOCK(tcpWriteQ);
-        DLL_REMOVE(tcp_, &tcpWriteQ, session);
-        MOLOCH_UNLOCK(tcpWriteQ);
+        DLL_REMOVE(tcp_, &tcpWriteQ[session->thread], session);
     }
 }
 /******************************************************************************/
 void moloch_session_free (MolochSession_t *session)
 {
     if (session->tcp_next) {
-        MOLOCH_LOCK(tcpWriteQ);
-        DLL_REMOVE(tcp_, &tcpWriteQ, session);
-        MOLOCH_UNLOCK(tcpWriteQ);
+        DLL_REMOVE(tcp_, &tcpWriteQ[session->thread], session);
     }
 
     g_array_free(session->filePosArray, TRUE);
@@ -234,13 +257,22 @@ void moloch_session_free (MolochSession_t *session)
 
     moloch_packet_tcp_free(session);
 
-    MOLOCH_LOCK_FREE(session->lock);
     MOLOCH_TYPE_FREE(MolochSession_t, session);
 }
 /******************************************************************************/
-// session should already be locked
 LOCAL void moloch_session_save(MolochSession_t *session)
 {
+    if (session->h_next) {
+        HASH_REMOVE(h_, sessions[session->thread][session->ses], session);
+        session->h_next = 0;
+    }
+
+    if (session->closingQ)
+        DLL_REMOVE(q_, &closingQ[session->thread], session);
+    else
+        DLL_REMOVE(q_, &sessionsQ[session->thread][session->ses], session);
+    session->q_next = 0;
+
     moloch_packet_tcp_free(session);
 
     if (session->parserInfo) {
@@ -255,15 +287,11 @@ LOCAL void moloch_session_save(MolochSession_t *session)
         moloch_plugins_cb_pre_save(session, TRUE);
 
     if (session->tcp_next) {
-        MOLOCH_LOCK(tcpWriteQ);
-        DLL_REMOVE(tcp_, &tcpWriteQ, session);
-        MOLOCH_UNLOCK(tcpWriteQ);
+        DLL_REMOVE(tcp_, &tcpWriteQ[session->thread], session);
     }
 
     if (session->outstandingQueries > 0) {
         session->needSave = 1;
-
-        MOLOCH_SESSION_UNLOCK; // didn't actually free, but should be removed from all globals, unlock ourselves
         return;
     }
 
@@ -285,10 +313,12 @@ void moloch_session_mid_save(MolochSession_t *session, uint32_t tv_sec)
     if (pluginsCbs & MOLOCH_PLUGIN_PRE_SAVE)
         moloch_plugins_cb_pre_save(session, FALSE);
 
+#ifdef FIXLATER
     /* If we are parsing pcap its ok to pause and make sure all tags are loaded */
     while (session->outstandingQueries > 0 && config.pcapReadOffline) {
         g_main_context_iteration (g_main_context_default(), TRUE);
     }
+#endif
 
     if (!session->rootId) {
         session->rootId = "ROOT";
@@ -301,9 +331,7 @@ void moloch_session_mid_save(MolochSession_t *session, uint32_t tv_sec)
     session->lastFileNum = 0;
 
     if (session->tcp_next) {
-        MOLOCH_LOCK(tcpWriteQ);
-        DLL_MOVE_TAIL(tcp_, &tcpWriteQ, session);
-        MOLOCH_UNLOCK(tcpWriteQ);
+        DLL_MOVE_TAIL(tcp_, &tcpWriteQ[session->thread], session);
     }
 
     session->saveTime = tv_sec + config.tcpSaveTimeout;
@@ -331,7 +359,33 @@ gboolean moloch_session_decr_outstanding(MolochSession_t *session)
 /******************************************************************************/
 int moloch_session_close_outstanding()
 {
-    return DLL_COUNT(q_, &closingQ);
+    int count = 0;
+    int t;
+    for (t = 0; t < config.packetThreads; t++) {
+        count += DLL_COUNT(q_, &closingQ[t]);
+    }
+    return count;
+}
+/******************************************************************************/
+int moloch_session_cmd_outstanding()
+{
+    int count = 0;
+    int t;
+    for (t = 0; t < config.packetThreads; t++) {
+        count += DLL_COUNT(cmd_, &sessionCmds[t]);
+    }
+    return count;
+}
+/******************************************************************************/
+MolochSession_t *moloch_session_find(int ses, char *sessionId)
+{
+    MolochSession_t *session;
+
+    uint32_t hash = moloch_session_hash(sessionId);
+    int      thread = hash % config.packetThreads;
+
+    HASH_FIND_HASH(h_, sessions[thread][ses], hash, sessionId, session);
+    return session;
 }
 /******************************************************************************/
 // Should only be used by packet, lots of side effects
@@ -354,12 +408,13 @@ MolochSession_t *moloch_session_find_or_create(int ses, char *sessionId, int *is
     *isNew = 1;
 
     session = MOLOCH_TYPE_ALLOC0(MolochSession_t);
+    session->ses = ses;
 
     memcpy(&session->sessionIda, sessionId, 8);
     memcpy(&session->sessionIdb, sessionId+8, 4);
 
     HASH_ADD_HASH(h_, sessions[thread][ses], hash, sessionId, session);
-    DLL_PUSH_TAIL(q_, &sessionsQ[ses], session);
+    DLL_PUSH_TAIL(q_, &sessionsQ[thread][ses], session);
 
     session->filePosArray = g_array_sized_new(FALSE, FALSE, sizeof(uint64_t), 100);
     session->fileLenArray = g_array_sized_new(FALSE, FALSE, sizeof(uint16_t), 100);
@@ -376,134 +431,113 @@ MolochSession_t *moloch_session_find_or_create(int ses, char *sessionId, int *is
 /******************************************************************************/
 uint32_t moloch_session_monitoring()
 {
-    return HASH_COUNT(h_, sessions[SESSION_TCP]) + HASH_COUNT(h_, sessions[SESSION_UDP]) + HASH_COUNT(h_, sessions[SESSION_ICMP]);
+    uint32_t count = 0;
+    int      i;
+
+    for (i = 0; i < config.packetThreads; i++) {
+        count += HASH_COUNT(h_, sessions[i][SESSION_TCP]) + HASH_COUNT(h_, sessions[i][SESSION_UDP]) + HASH_COUNT(h_, sessions[i][SESSION_ICMP]);
+    }
+    return count;
 }
 /******************************************************************************/
-static void *moloch_session_cleanup_thread(void *UNUSED(arg))
+void moloch_session_process_commands(int thread)
 {
-    int ses;
-    MolochSession_t *session;
-
+    // Commands
+    MolochSesCmd_t *cmd = 0;
     while (1) {
-        int doSleep = 1;
-        int cnt;
+        MOLOCH_LOCK(sessionCmds[thread].lock);
+        DLL_POP_HEAD(cmd_, &sessionCmds[thread], cmd);
+        MOLOCH_UNLOCK(sessionCmds[thread].lock);
+        if (!cmd)
+            break;
 
-// Sessions Idle Long Time
-        for (ses = 0; ses < SESSION_MAX; ses++) {
-            cnt = 0;
-
-            while (cnt < 15000) {
-                MOLOCH_LOCK(sessions);
-                session = DLL_PEEK_HEAD(q_, &sessionsQ[ses]);
-
-                if (session && (DLL_COUNT(q_, &sessionsQ[ses]) > config.maxStreams ||
-                                ((uint64_t)session->lastPacket.tv_sec + config.timeouts[ses] < (uint64_t)lastPacketSecs))) {
-
-                    if (unlikely(session->tfq_next != NULL)) {
-                        LOG("ALW - NOT SAVING BECAUSE TFQ");
-                        MOLOCH_UNLOCK(sessions);
-                        continue;
-                    }
-
-                    if (!MOLOCH_SESSION_TRYLOCK) {
-                        MOLOCH_UNLOCK(sessions);
-                        continue;
-                    }
-
-                    DLL_REMOVE(q_, &sessionsQ[ses], session);
-                    if (session->h_next)
-                        HASH_REMOVE(h_, sessions[ses], session);
-                    MOLOCH_UNLOCK(sessions); // Unlock during save
-                    moloch_session_save(session);
-                    // session is gone, no need to unlock
-                    cnt++;
-                } else {
-                    MOLOCH_UNLOCK(sessions);
-                    break;
-                }
-            }
-
-            if (cnt >= 15000)
-                doSleep = 0;
+        switch (cmd->cmd) {
+        case MOLOCH_SES_CMD_ADD_TAG:
+            moloch_field_int_add((long)cmd->uw1, cmd->session, (long)cmd->uw2);
+            moloch_session_decr_outstanding(cmd->session);
+            break;
+        case MOLOCH_SES_CMD_FUNC:
+            cmd->func(cmd->session, cmd->uw1, cmd->uw2);
+            break;
+        default:
+            LOG ("Unknown cmd %d", cmd->cmd);
         }
+        MOLOCH_TYPE_FREE(MolochSesCmd_t, cmd);
+    }
 
-// TCP Sessions Open Long Time
-        cnt = 0;
-        while (cnt < 1000) {
-            MOLOCH_LOCK(tcpWriteQ);
-            session = DLL_PEEK_HEAD(tcp_, &tcpWriteQ);
+    // Closing Q
+    MolochSession_t *session;
+    while (1) {
+        session = DLL_PEEK_HEAD(q_, &closingQ[thread]);
 
-            if (session && (uint64_t)session->saveTime < (uint64_t)lastPacketSecs) {
-                if (!MOLOCH_SESSION_TRYLOCK) {
-                    MOLOCH_UNLOCK(tcpWriteQ);
-                    continue;
-                }
-                MOLOCH_UNLOCK(tcpWriteQ);
-
-                moloch_session_mid_save(session, session->lastPacket.tv_sec);
-                cnt++;
-                MOLOCH_SESSION_UNLOCK;
-            } else {
-                MOLOCH_UNLOCK(tcpWriteQ);
-                break;
-            }
+        if (session && session->saveTime < (uint64_t)lastPacketSecs) {
+            moloch_session_save(session);
+        } else {
+            break;
         }
+    }
 
-        if (cnt == 1000)
-            doSleep = 0;
+#ifdef FIXLATER    
+    // Sessions Idle Long Time
+    int ses;
+    for (ses = 0; ses < SESSION_MAX; ses++) {
+        while (1) {
+            session = DLL_PEEK_HEAD(q_, &sessionsQ[thread][ses]);
 
-// TCP Session Closing Q
-        cnt = 0;
-        while (cnt < 1000) {
-            MOLOCH_LOCK(sessions);
-            session = DLL_PEEK_HEAD(q_, &closingQ);
+            if (session && (DLL_COUNT(q_, &sessionsQ[thread][ses]) > (int)config.maxStreams ||
+                            ((uint64_t)session->lastPacket.tv_sec + config.timeouts[ses] < (uint64_t)lastPacketSecs))) {
 
-            if (session && session->saveTime < (uint64_t)lastPacketSecs) {
-                if (!MOLOCH_SESSION_TRYLOCK)
-                {
-                    MOLOCH_UNLOCK(sessions);
-                    continue;
-                }
-
-                DLL_REMOVE(q_, &closingQ, session);
-                if (session->h_next) {
-                    HASH_REMOVE(h_, sessions[SESSION_TCP], session);
-                }
-                MOLOCH_UNLOCK(sessions);
                 moloch_session_save(session);
-                cnt++;
-                // session is gone, no need to unlock
             } else {
-                MOLOCH_UNLOCK(sessions);
                 break;
             }
         }
-        if (cnt == 1000)
-            doSleep = 0;
+    }
 
-// Pause if we processed everything
-        if (doSleep) {
-            usleep(5000);
+    // TCP Sessions Open Long Time
+    while (1) {
+        session = DLL_PEEK_HEAD(tcp_, &tcpWriteQ[thread]);
+
+        if (session && (uint64_t)session->saveTime < (uint64_t)lastPacketSecs) {
+            moloch_session_mid_save(session, lastPacketSecs);
+        } else {
+            break;
         }
-    } // while
+    }
+#endif
 
-    return NULL;
 }
-
 
 /******************************************************************************/
 int moloch_session_watch_count(int ses)
 {
-    return DLL_COUNT(q_, &sessionsQ[ses]);
+    int count = 0;
+    int t;
+
+    for (t = 0; t < config.packetThreads; t++) {
+        count += DLL_COUNT(q_, &sessionsQ[t][ses]);
+    }
+    return count;
 }
 
 /******************************************************************************/
 int moloch_session_idle_seconds(int ses)
 {
-    MolochSession_t *session = DLL_PEEK_HEAD(q_, &sessionsQ[ses]);
-    return (session?(int)(lastPacketSecs - (session->lastPacket.tv_sec + config.timeouts[ses])):0);
-}
+    int idle = 0;
+    int tmp;
+    int t;
 
+    for (t = 0; t < config.packetThreads; t++) {
+        MolochSession_t *session = DLL_PEEK_HEAD(q_, &sessionsQ[t][ses]);
+        if (!session)
+            continue;
+
+        tmp = lastPacketSecs - (session->lastPacket.tv_sec + config.timeouts[ses]);
+        if (tmp > idle)
+            idle = tmp;
+    }
+    return idle;
+}
 
 /******************************************************************************/
 void moloch_session_init()
@@ -528,72 +562,62 @@ void moloch_session_init()
     if (config.debug)
         LOG("session hash size %d", primes[p]);
 
-    HASHP_INIT(h_, sessions[SESSION_UDP], primes[p], moloch_session_hash, moloch_session_cmp);
-    HASHP_INIT(h_, sessions[SESSION_TCP], primes[p], moloch_session_hash, moloch_session_cmp);
-    HASHP_INIT(h_, sessions[SESSION_ICMP], primes[p], moloch_session_hash, moloch_session_cmp);
-    DLL_INIT(tcp_, &tcpWriteQ);
-    DLL_INIT(q_, &closingQ);
-    DLL_INIT(q_, &sessionsQ[SESSION_UDP]);
-    DLL_INIT(q_, &sessionsQ[SESSION_TCP]);
-    DLL_INIT(q_, &sessionsQ[SESSION_ICMP]);
+    int t;
+    for (t = 0; t < config.packetThreads; t++) {
+        HASHP_INIT(h_, sessions[t][SESSION_UDP], primes[p], moloch_session_hash, moloch_session_cmp);
+        HASHP_INIT(h_, sessions[t][SESSION_TCP], primes[p], moloch_session_hash, moloch_session_cmp);
+        HASHP_INIT(h_, sessions[t][SESSION_ICMP], primes[p], moloch_session_hash, moloch_session_cmp);
+        DLL_INIT(q_, &sessionsQ[t][SESSION_UDP]);
+        DLL_INIT(q_, &sessionsQ[t][SESSION_TCP]);
+        DLL_INIT(q_, &sessionsQ[t][SESSION_ICMP]);
+        DLL_INIT(tcp_, &tcpWriteQ[t]);
+        DLL_INIT(q_, &closingQ[t]);
+        DLL_INIT(cmd_, &sessionCmds[t]);
+        MOLOCH_LOCK_INIT(sessionCmds[t].lock);
+    }
 
-    
-    g_thread_new("moloch-cleanup", &moloch_session_cleanup_thread, NULL);
+    moloch_add_can_quit(moloch_session_cmd_outstanding);
+    moloch_add_can_quit(moloch_session_close_outstanding);
 }
 /******************************************************************************/
+/* Only called on main thread. Wait for all packet threads to be empty and then 
+ * start the save process on sessions.
+ */
 void moloch_session_flush()
 {
+    moloch_packet_flush();
+
     MolochSession_t *session;
-
+    int thread;
     int i;
-    for (i = 0; i < SESSION_MAX; i++) {
-
-#ifdef PRINT_BUCKETS
-        // Print out the histogram for buckets, see how we are doing
-        printf("\nBuckets for %d:\n", i);
-        int buckets[51];
-        int total[51];
-        memset(buckets, 0, sizeof(buckets));
-        memset(total, 0, sizeof(total));
-        int b;
-        for ( b = 0;  b < sessions[i].size;  b++) {
-            if (sessions[i].buckets[b].h_count >= 50) {
-                buckets[50]++;
-                total[50] += sessions[i].buckets[b].h_count;
-            } else {
-                buckets[(sessions[i].buckets[b].h_count)]++;
-                total[(sessions[i].buckets[b].h_count)] += sessions[i].buckets[b].h_count;
-            }
+    for (thread = 0; thread < config.packetThreads; thread++) {
+        for (i = 0; i < SESSION_MAX; i++) {
+            HASH_FORALL_POP_HEAD(h_, sessions[thread][i], session,
+                session->h_next = 0;
+                moloch_session_save(session);
+            );
         }
-        for ( b = 0;  b <= 50;  b++) {
-            if (buckets[b])
-                printf(" %2d: %7d %7d\n", b, buckets[b], total[b]);
-        }
-#endif
-
-        MOLOCH_LOCK(sessions);
-        HASH_FORALL_POP_HEAD(h_, sessions[i], session,
-            if (session->closingQ)
-                DLL_REMOVE(q_, &closingQ, session);
-            else
-                DLL_REMOVE(q_, &sessionsQ[i], session);
-            MOLOCH_UNLOCK(sessions);
-            MOLOCH_SESSION_LOCK;
-            moloch_session_save(session);
-            MOLOCH_LOCK(sessions);
-        );
-        MOLOCH_UNLOCK(sessions);
     }
 }
 /******************************************************************************/
 void moloch_session_exit()
 {
+    int counts[SESSION_MAX] = {0, 0, 0};
+
+    int t;
+
+    for (t = 0; t < config.packetThreads; t++) {
+        counts[SESSION_TCP] += sessionsQ[t][SESSION_TCP].q_count;
+        counts[SESSION_UDP] += sessionsQ[t][SESSION_UDP].q_count;
+        counts[SESSION_ICMP] += sessionsQ[t][SESSION_ICMP].q_count;
+    }
+
     config.exiting = 1;
     LOG("sessions: %d tcp: %d udp: %d icmp: %d",
             moloch_session_monitoring(),
-            sessionsQ[SESSION_TCP].q_count,
-            sessionsQ[SESSION_UDP].q_count,
-            sessionsQ[SESSION_ICMP].q_count);
+            counts[SESSION_TCP],
+            counts[SESSION_UDP],
+            counts[SESSION_ICMP]);
 
     moloch_session_flush();
 

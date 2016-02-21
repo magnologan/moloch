@@ -12,9 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
 #include "moloch.h"
 
 typedef struct {
@@ -76,7 +73,7 @@ void mysql_classify(MolochSession_t *session, const unsigned char *data, int len
     if (which != 1)
         return;
 
-    if (moloch_nids_has_protocol(session, "mysql"))
+    if (moloch_session_has_protocol(session, "mysql"))
         return;
 
     unsigned char *ptr = (unsigned char*)data + 5;

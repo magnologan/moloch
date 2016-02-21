@@ -16,16 +16,13 @@
  * limitations under the License.
  */
 #define _FILE_OFFSET_BITS 64
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
+#include "moloch.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include "moloch.h"
 #include <gio/gio.h>
 
 #ifndef O_NOATIME
@@ -43,6 +40,7 @@ typedef struct moloch_output {
     char      *buf;
     uint64_t   max;
     uint64_t   pos;
+    int        ref;
     char       close;
 } MolochDiskOutput_t;
 
@@ -72,10 +70,7 @@ static int                   pageSize;
 /******************************************************************************/
 uint32_t writer_disk_queue_length_thread()
 {
-
-    MOLOCH_LOCK(outputQ);
     int count = DLL_COUNT(mo_, &outputQ);
-    MOLOCH_UNLOCK(outputQ);
     return count;
 }
 /******************************************************************************/
@@ -94,7 +89,7 @@ void writer_disk_alloc_buf(MolochDiskOutput_t *out)
         DLL_POP_HEAD(i_, &freeOutputBufs, tmp);
         out->buf = (void*)tmp;
     } else {
-        out->buf = mmap (0, config.pcapWriteSize + 8192, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
+        out->buf = mmap (0, config.pcapWriteSize + 20000, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
     }
 
     if (writeMethod & MOLOCH_WRITE_THREAD)
@@ -116,6 +111,8 @@ void writer_disk_free_buf(MolochDiskOutput_t *out)
 
     if (writeMethod & MOLOCH_WRITE_THREAD)
         MOLOCH_UNLOCK(freeOutputBufs);
+
+    MOLOCH_TYPE_FREE(MolochDiskOutput_t, out);
 }
 /******************************************************************************/
 gboolean writer_disk_output_cb(gint fd, GIOCondition UNUSED(cond), gpointer UNUSED(data))
@@ -185,9 +182,9 @@ gboolean writer_disk_output_cb(gint fd, GIOCondition UNUSED(cond), gpointer UNUS
     }
 
     // Cleanup buffer
-    writer_disk_free_buf(out);
     DLL_REMOVE(mo_, &outputQ, out);
-    MOLOCH_TYPE_FREE(MolochDiskOutput_t, out);
+    if (out->ref == 0)
+        writer_disk_free_buf(out);
 
     // More waiting to write on different fd, setup a new watch
     if (outputFd && !config.exiting && DLL_COUNT(mo_, &outputQ) > 0) {
@@ -200,12 +197,13 @@ gboolean writer_disk_output_cb(gint fd, GIOCondition UNUSED(cond), gpointer UNUS
 /******************************************************************************/
 void *writer_disk_output_thread(void *UNUSED(arg))
 {
+    LOG("THREAD %p", pthread_self());
+
     MolochDiskOutput_t *out;
     int outputFd = 0;
 
     while (1) {
         uint64_t filelen = 0;
-
         MOLOCH_LOCK(outputQ);
         while (DLL_COUNT(mo_, &outputQ) == 0) {
             MOLOCH_COND_WAIT(outputQ);
@@ -251,14 +249,14 @@ void *writer_disk_output_thread(void *UNUSED(arg))
             outputFd = 0;
             free(out->name);
         }
-        writer_disk_free_buf(out);
-        MOLOCH_TYPE_FREE(MolochDiskOutput_t, out);
+        if (out->ref == 0)
+            writer_disk_free_buf(out);
     }
 }
 /******************************************************************************/
 void writer_disk_flush(gboolean all)
 {
-    if (config.dryRun || !output) {
+    if (unlikely(config.dryRun || !output)) {
         return;
     }
 
@@ -319,10 +317,10 @@ void writer_disk_exit()
     }
 }
 /******************************************************************************/
-extern struct pcap_file_header pcapFileHeader;
-void writer_disk_create(const struct pcap_pkthdr *h)
+extern MolochPcapFileHdr_t pcapFileHeader;
+void writer_disk_create(MolochPacket_t * const packet)
 {
-    outputFileName = moloch_db_create_file(h->ts.tv_sec, NULL, 0, 0, &outputId);
+    outputFileName = moloch_db_create_file(packet->ts.tv_sec, NULL, 0, 0, &outputId);
     outputFilePos = 24;
 
     output = MOLOCH_TYPE_ALLOC0(MolochDiskOutput_t);
@@ -341,39 +339,50 @@ struct pcap_timeval {
 struct pcap_sf_pkthdr {
     struct pcap_timeval ts;	/* time stamp */
     uint32_t caplen;		/* length of portion present */
-    uint32_t len;		/* length this packet (off wire) */
+    uint32_t pktlen;		/* length this packet (off wire) */
 };
 void
-writer_disk_write(const struct pcap_pkthdr *h, const u_char *sp, uint32_t *fileNum, uint64_t *filePos)
+writer_disk_write(MolochPacket_t * const packet)
 {
     struct pcap_sf_pkthdr hdr;
 
-    hdr.ts.tv_sec  = h->ts.tv_sec;
-    hdr.ts.tv_usec = h->ts.tv_usec;
-    hdr.caplen     = h->caplen;
-    hdr.len        = h->len;
+    hdr.ts.tv_sec  = packet->ts.tv_sec;
+    hdr.ts.tv_usec = packet->ts.tv_usec;
+    hdr.caplen     = packet->pktlen;
+    hdr.pktlen     = packet->pktlen;
 
     if (!outputFileName) {
-        writer_disk_create(h);
+        writer_disk_create(packet);
     }
 
     memcpy(output->buf + output->pos, (char *)&hdr, sizeof(hdr));
     output->pos += sizeof(hdr);
 
-    memcpy(output->buf + output->pos, sp, h->caplen);
-    output->pos += h->caplen;
+    memcpy(output->buf + output->pos, packet->pkt, packet->pktlen);
+    output->pos += packet->pktlen;
 
     if(output->pos > output->max) {
         writer_disk_flush(FALSE);
     }
-    *fileNum = outputId;
-    *filePos = outputFilePos;
-    outputFilePos += 16 + h->caplen;
+    output->ref++;
+    packet->writerFileNum = outputId;
+    packet->writerFilePos = outputFilePos;
+    packet->writerData    = output;
+    outputFilePos += 16 + packet->pktlen;
 
     if (outputFilePos >= config.maxFileSizeB) {
         writer_disk_flush(TRUE);
         outputFileName = 0;
     }
+}
+/******************************************************************************/
+void
+writer_disk_finish(MolochPacket_t * const packet)
+{
+    MolochDiskOutput_t *out = packet->writerData;
+    out->ref--;
+    if (out->ref == 0 && out->pos == out->max)
+        writer_disk_free_buf(out);
 }
 /******************************************************************************/
 gboolean 
@@ -443,6 +452,7 @@ void writer_disk_init(char *name)
     moloch_writer_flush        = writer_disk_flush;
     moloch_writer_exit         = writer_disk_exit;
     moloch_writer_write        = writer_disk_write;
+    moloch_writer_finish       = writer_disk_finish;
     moloch_writer_name         = writer_disk_name;
 
     if (config.maxFileTimeM > 0) {

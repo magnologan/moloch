@@ -34,6 +34,20 @@ sub doGeo {
     }
 }
 ################################################################################
+sub sortJson {
+    my ($json) = @_;
+
+    foreach my $packet (@{$json->{packets}}) {
+        my $body = $packet->{body};
+        foreach my $i ("dnsip") {
+            if (exists $body->{$i}) {
+                my @tmp = sort (@{$body->{$i}});
+                $body->{$i} = \@tmp;
+            }
+        }
+    }
+}
+################################################################################
 sub doTests {
     my @files = @ARGV;
     @files = glob ("pcap/*.pcap") if ($#files == -1);
@@ -46,7 +60,8 @@ sub doTests {
 
         open my $fh, '<', "$filename.test" or die "error opening $filename.test: $!";
         my $savedData = do { local $/; <$fh> };
-        my $savedJson = from_json($savedData, {relaxed => 1});
+        my $savedJson = sortJson(from_json($savedData, {relaxed => 1}));
+
 
         my $cmd = "../capture/moloch-capture --tests -c config.test.ini -n test -r $filename.pcap 2>&1 1>/dev/null | ./tests.pl --fix";
 
@@ -59,7 +74,7 @@ sub doTests {
         }
 
         my $testData = `$cmd`;
-        my $testJson = from_json($testData, {relaxed => 1});
+        my $testJson = sortJson(from_json($testData, {relaxed => 1}));
 
         eq_or_diff($testJson, $savedJson, "$filename", { context => 3 });
     }
@@ -158,6 +173,7 @@ my ($cmd) = @_;
             system("cd ../viewer ; node viewer.js -c ../tests/config.test.ini -n test2 > /dev/null &");
             system("cd ../viewer ; node viewer.js -c ../tests/config.test.ini -n all > /dev/null &");
         }
+        sleep 1;
         sleep (10000) if ($cmd eq "--viewerhang");
     } else {
         print ("Initializing ES\n");
@@ -188,7 +204,7 @@ my ($cmd) = @_;
 
         print ("Loading PCAP\n");
 
-        my $cmd = "../capture/moloch-capture -c config.test.ini -n test -R pcap";
+        my $cmd = "../capture/moloch-capture -c config.test.ini -n test -R pcap --flush";
         if (!$main::debug) {
             $cmd .= " 2>&1 1>/dev/null";
         } else {

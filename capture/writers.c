@@ -15,17 +15,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include "moloch.h"
 #include <inttypes.h>
 #include <errno.h>
-#include <ctype.h>
-#include "moloch.h"
 
 MolochWriterQueueLength moloch_writer_queue_length;
 MolochWriterWrite moloch_writer_write;
+MolochWriterFinish moloch_writer_finish;
 MolochWriterFlush moloch_writer_flush;
 MolochWriterExit moloch_writer_exit;
 MolochWriterNextInput moloch_writer_next_input;
