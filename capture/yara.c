@@ -396,7 +396,7 @@ void  moloch_yara_execute(MolochSession_t *session, const uint8_t *data, int len
     return;
 }
 /******************************************************************************/
-void  moloch_yara_email_execute(MolochSession_t *session, unsigned char *data, int len, int first)
+void moloch_yara_email_execute(MolochSession_t *session, const uint8_t *data, int len, int first)
 {
     MEMORY_BLOCK block;
 

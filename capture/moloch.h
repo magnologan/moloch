@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
+#define __FAVOR_BSD
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>

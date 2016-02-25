@@ -15,14 +15,9 @@
  * limitations under the License.
  */
 
-#define __FAVOR_BSD
 #include "moloch.h"
 #include <inttypes.h>
 #include <arpa/inet.h>
-#include <netinet/in_systm.h>
-#include <netinet/tcp.h>
-#include <netinet/udp.h>
-#include <netinet/ip_icmp.h>
 
 /******************************************************************************/
 extern MolochConfig_t        config;
