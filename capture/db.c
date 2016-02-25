@@ -242,6 +242,7 @@ void moloch_db_save_session(MolochSession_t *session, int final)
     static char     prefix[100];
     static time_t   prefix_time = 0;
 
+    MOLOCH_LOCK(sJson);
     if (prefix_time != session->lastPacket.tv_sec) {
         prefix_time = session->lastPacket.tv_sec;
         struct tm *tmp = gmtime(&prefix_time);
@@ -277,7 +278,6 @@ void moloch_db_save_session(MolochSession_t *session, int final)
 
     key_len = snprintf(key, sizeof(key), "/_bulk");
 
-    MOLOCH_LOCK(sJson);
     /* If no room left to add, send the buffer */
     if (sJson && (uint32_t)BSB_REMAINING(jbsb) < jsonSize) {
         if (BSB_LENGTH(jbsb) > 0) {

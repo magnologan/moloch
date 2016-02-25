@@ -259,10 +259,11 @@ LOCAL int moloch_packet_process_tcp(MolochSession_t * const session, MolochPacke
                         DLL_ADD_AFTER(td_, tcpData, ftd, td);
 
                         DLL_REMOVE(td_, tcpData, ftd);
-                        moloch_packet_free(packet);
+                        moloch_packet_free(ftd->packet);
                         MOLOCH_TYPE_FREE(MolochTcpData_t, ftd);
                         ftd = td;
                     } else {
+                        moloch_packet_free(td->packet);
                         MOLOCH_TYPE_FREE(MolochTcpData_t, td);
                         return 1;
                     }

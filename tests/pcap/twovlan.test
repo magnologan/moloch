@@ -1,0 +1,174 @@
+{
+   "packets" : [
+      {
+         "header" : {
+            "index" : {
+               "_type" : "session",
+               "_index" : "tests_sessions-160221"
+            }
+         },
+         "body" : {
+            "by2" : 4574,
+            "mac1-term" : [
+               "00:0c:29:c1:2d:24"
+            ],
+            "hh1" : [
+               "http:header:accept",
+               "http:header:connection",
+               "http:header:host",
+               "http:header:user-agent"
+            ],
+            "vlan" : [
+               200,
+               201
+            ],
+            "ta" : [
+               "dstip",
+               "srcip"
+            ],
+            "hdver" : [
+               "1.1"
+            ],
+            "no" : "test",
+            "db2" : 4344,
+            "fpd" : 1456042921641,
+            "ua" : [
+               "Wget/1.15 (linux-gnu)"
+            ],
+            "fp" : 1456042921,
+            "pa2" : 3,
+            "uscnt" : 1,
+            "hdvercnt" : 1,
+            "by1" : 343,
+            "a2" : "10.0.0.2",
+            "g1" : "RUS",
+            "hh2" : [
+               "http:header:accept-ranges",
+               "http:header:access-control-allow-origin",
+               "http:header:age",
+               "http:header:cache-control",
+               "http:header:connection",
+               "http:header:content-length",
+               "http:header:content-security-policy",
+               "http:header:content-type",
+               "http:header:date",
+               "http:header:fastly-debug-digest",
+               "http:header:set-cookie",
+               "http:header:vary",
+               "http:header:via",
+               "http:header:x-cache",
+               "http:header:x-cache-hits",
+               "http:header:x-served-by",
+               "http:header:x-servedbyhost",
+               "http:header:x-timer",
+               "http:header:x-xss-protection"
+            ],
+            "mac2-term-cnt" : 1,
+            "lp" : 1456042921,
+            "fb2" : "485454502f312e31",
+            "mac1-term-cnt" : 1,
+            "sl" : 120,
+            "ss" : 1,
+            "ps" : [
+               -1,
+               24,
+               122,
+               220,
+               310,
+               513,
+               603
+            ],
+            "uacnt" : 1,
+            "a1" : "10.0.0.1",
+            "pr" : 6,
+            "test" : {
+               "number" : [
+                  33554442
+               ],
+               "ip-asn" : [
+                  "AS0000 This is neat"
+               ],
+               "ip-geo" : [
+                  "RUS"
+               ],
+               "ip" : [
+                  167772161
+               ],
+               "string" : [
+                  "16777226:54422,33554442:80"
+               ],
+               "ip-rir" : [
+                  ""
+               ]
+            },
+            "hh2cnt" : 19,
+            "us" : [
+               "//xxxxxxx.xxx.xxx/"
+            ],
+            "g2" : "CAN",
+            "as2" : "AS0001 Cool Beans!",
+            "psl" : [
+               0,
+               98,
+               98,
+               90,
+               203,
+               90,
+               4434
+            ],
+            "hh1cnt" : 4,
+            "hpath" : [
+               "/"
+            ],
+            "db1" : 113,
+            "pa" : 6,
+            "fb1" : "474554202f204854",
+            "p2" : 80,
+            "rir2" : "TEST",
+            "lpd" : 1456042921761,
+            "p1" : 54422,
+            "by" : 4917,
+            "tacnt" : 2,
+            "pa1" : 3,
+            "prot-term" : [
+               "http",
+               "tcp"
+            ],
+            "hpathcnt" : 1,
+            "ho" : [
+               "xxxxxxx.xxx.xxx"
+            ],
+            "hocnt" : 1,
+            "db" : 4457,
+            "http" : {
+               "statuscode" : [
+                  200
+               ],
+               "statuscode-cnt" : 1,
+               "bodymagic-term-cnt" : 1,
+               "method-term" : [
+                  "GET"
+               ],
+               "bodymagic-term" : [
+                  "text/html"
+               ],
+               "method-term-cnt" : 1
+            },
+            "as1" : "AS0000 This is neat",
+            "hsvercnt" : 1,
+            "fs" : [
+               1
+            ],
+            "vlan-cnt" : 2,
+            "prot-term-cnt" : 2,
+            "hsver" : [
+               "1.1"
+            ],
+            "mac2-term" : [
+               "00:09:0f:db:f4:3e"
+            ]
+         }
+      }
+   ]
+}
+
