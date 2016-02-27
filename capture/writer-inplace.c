@@ -28,20 +28,8 @@
 extern MolochConfig_t        config;
 
 
-static char                 *outputFileName;
-static uint32_t              outputId;
-static FILE                 *inputFile;
-static char                  inputFilename[PATH_MAX+1];
-
-typedef struct moloch_output {
-    char      *buf;
-    uint64_t   max;
-    uint64_t   pos;
-    int        ref;
-} MolochInplaceOutput_t;
-
-LOCAL MolochInplaceOutput_t *current;
-LOCAL MOLOCH_LOCK_DEFINE(current);
+LOCAL GHashTable           *filePtr2Id;
+MOLOCH_LOCK_DEFINE(filePtr2Id);
 
 /******************************************************************************/
 uint32_t writer_inplace_queue_length()
@@ -57,76 +45,41 @@ void writer_inplace_exit()
 {
 }
 /******************************************************************************/
-void writer_inplace_create(MolochPacket_t * const packet, char *filename)
+long writer_inplace_create(MolochPacket_t * const packet)
 {
-    if (config.dryRun) {
-        outputFileName = "dryrun.pcap";
-        return;
-    }
-
     struct stat st;
 
-    fstat(fileno(inputFile), &st);
+    stat(packet->readerName, &st);
 
-    outputFileName = moloch_db_create_file(packet->ts.tv_sec, filename, st.st_size, 1, &outputId);
+    uint32_t outputId;
+    moloch_db_create_file(packet->ts.tv_sec, packet->readerName, st.st_size, 1, &outputId);
+    g_hash_table_insert(filePtr2Id, packet->readerName, (gpointer)(long)outputId);
+    return outputId;
 }
 
 /******************************************************************************/
 void
 writer_inplace_write(MolochPacket_t * const packet)
 {
-    MOLOCH_LOCK(current);
-    if (!current) {
-        current = MOLOCH_TYPE_ALLOC0(MolochInplaceOutput_t);
-        current->max = config.pcapWriteSize;
-        current->buf = mmap (0, config.pcapWriteSize + 20000, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
-    }
-
-    memcpy(current->buf + current->pos, packet->pkt, packet->pktlen);
-    packet->pkt = (uint8_t *)current->buf + current->pos;
-    current->pos += packet->pktlen;
-    current->ref++;
-    packet->writerData = current;
-
-    if(current->pos > current->max) {
-        current = NULL;
-    }
-    MOLOCH_UNLOCK(current);
-
-    if (!outputFileName)
-        writer_inplace_create(packet, inputFilename);
+    MOLOCH_LOCK(filePtr2Id);
+    long outputId = (long)g_hash_table_lookup(filePtr2Id, packet->readerName);
+    if (!outputId)
+        outputId = writer_inplace_create(packet);
+    MOLOCH_UNLOCK(filePtr2Id);
 
     packet->writerFileNum = outputId;
     packet->writerFilePos = packet->readerFilePos;
 }
 /******************************************************************************/
 void
-writer_inplace_finish(MolochPacket_t * const packet)
+writer_inplace_write_dryrun(MolochPacket_t * const packet)
 {
-
-    MolochInplaceOutput_t *output = packet->writerData;
-
-    MOLOCH_LOCK(current);
-    output->ref--;
-    if (output->ref == 0 && output != current) {
-        MOLOCH_TYPE_FREE(MolochInplaceOutput_t, output);
-    }
-    MOLOCH_UNLOCK(current);
+    packet->writerFilePos = packet->readerFilePos;
 }
 /******************************************************************************/
 char *
 writer_inplace_name() {
-    return inputFilename;
-}
-/******************************************************************************/
-void
-writer_inplace_next_input(FILE *file, char *filename) {
-    inputFile = file;
-    strcpy(inputFilename, filename);
-    if (!config.dryRun) {
-        g_free(outputFileName);
-    }
-    outputFileName = 0;
+    return "hmm";
 }
 /******************************************************************************/
 void writer_inplace_init(char *UNUSED(name))
@@ -134,8 +87,11 @@ void writer_inplace_init(char *UNUSED(name))
     moloch_writer_queue_length = writer_inplace_queue_length;
     moloch_writer_flush        = writer_inplace_flush;
     moloch_writer_exit         = writer_inplace_exit;
-    moloch_writer_write        = writer_inplace_write;
-    moloch_writer_finish       = writer_inplace_finish;
-    moloch_writer_next_input   = writer_inplace_next_input;
+    if (config.dryRun)
+        moloch_writer_write    = writer_inplace_write_dryrun;
+    else
+        moloch_writer_write    = writer_inplace_write;
     moloch_writer_name         = writer_inplace_name;
+
+    filePtr2Id = g_hash_table_new(g_direct_hash, g_direct_equal);
 }

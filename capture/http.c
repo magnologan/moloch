@@ -64,8 +64,7 @@ typedef struct molochhttpconn_t {
     uint32_t                 h_hash;
     short                    h_bucket;
 
-    uint64_t                 sessionIda;
-    uint32_t                 sessionIdb;
+    char                     sessionId[MOLOCH_SESSIONID_LEN];
 } MolochHttpConn_t;
 
 typedef struct molochhttpconnhead_t {
@@ -113,8 +112,7 @@ int moloch_http_conn_cmp(const void *keyv, const void *elementv)
 {
     MolochHttpConn_t *conn = (MolochHttpConn_t *)elementv;
 
-    return (*(uint64_t *)keyv     == conn->sessionIda && 
-            *(uint32_t *)(keyv+8) == conn->sessionIdb);
+    return memcmp(keyv, conn->sessionId, MIN(((uint8_t *)keyv)[0], conn->sessionId[0])) == 0;
 }
 /******************************************************************************/
 static size_t moloch_http_curl_write_callback(void *contents, size_t size, size_t nmemb, void *requestP)
@@ -404,12 +402,11 @@ static gboolean moloch_http_curl_watch_open_callback(int fd, GIOCondition condit
         conn = MOLOCH_TYPE_ALLOC0(MolochHttpConn_t);
 
         HASH_ADD(h_, connections, sessionId, conn);
-        memcpy(&conn->sessionIda, sessionId, 8);
-        memcpy(&conn->sessionIdb, sessionId+8, 4);
+        memcpy(&conn->sessionId, sessionId, sessionId[0]);
         server->connections++;
     } else {
-        LOG("ERROR - Already added %x %s", condition, moloch_session_id_string(6, localAddress.sin_addr.s_addr, htons(localAddress.sin_port),
-                                                                               remoteAddress.sin_addr.s_addr, htons(remoteAddress.sin_port)));
+        char buf[1000];
+        LOG("ERROR - Already added %x %s", condition, moloch_session_id_string(sessionId, buf));
     }
     MOLOCH_UNLOCK(connections);
 

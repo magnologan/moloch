@@ -21,7 +21,6 @@
 
 MolochWriterQueueLength moloch_writer_queue_length;
 MolochWriterWrite moloch_writer_write;
-MolochWriterFinish moloch_writer_finish;
 MolochWriterFlush moloch_writer_flush;
 MolochWriterExit moloch_writer_exit;
 MolochWriterNextInput moloch_writer_next_input;

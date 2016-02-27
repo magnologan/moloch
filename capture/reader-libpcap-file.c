@@ -30,9 +30,10 @@ static pcap_t               *pcap;
 static FILE                 *offlineFile = 0;
 
 extern void                 *esServer;
-static MolochStringHead_t    monitorQ;
+LOCAL  MolochStringHead_t    monitorQ;
 
-static char                  offlinePcapFilename[PATH_MAX+1];
+LOCAL  char                  offlinePcapFilename[PATH_MAX+1];
+LOCAL  char                 *offlinePcapName;
 
 void reader_libpcapfile_opened();
 
@@ -330,10 +331,11 @@ void reader_libpcapfile_pcap_cb(u_char *UNUSED(user), const struct pcap_pkthdr *
         exit (0);
     }
 
-    packet->pkt           = bytes;
+    packet->pkt           = (u_char *)bytes;
     packet->ts            = h->ts;
     packet->pktlen        = h->len;
     packet->readerFilePos = ftell(offlineFile) - 16 - h->len;
+    packet->readerName    = offlinePcapName;
     moloch_packet(packet);
 }
 /******************************************************************************/
@@ -384,9 +386,6 @@ void reader_libpcapfile_opened()
 
     offlineFile = pcap_file(pcap);
 
-    if (offlineFile && moloch_writer_next_input)
-        moloch_writer_next_input(offlineFile, offlinePcapFilename);
-    
     if (config.bpf) {
         struct bpf_program   bpf;
 
@@ -420,6 +419,8 @@ void reader_libpcapfile_opened()
 
     if (config.flushBetween)
         moloch_session_flush();
+
+    offlinePcapName = strdup(offlinePcapFilename);
 
     int fd = pcap_fileno(pcap);
     if (fd == -1) {

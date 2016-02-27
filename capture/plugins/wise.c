@@ -18,14 +18,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "moloch.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include "moloch.h"
 
 extern MolochConfig_t        config;
 
@@ -114,6 +110,9 @@ typedef HASH_VAR(h_, WiseItemHash_t, WiseItemHead_t, 199337);
 
 WiseItemHash_t itemHash[4];
 WiseItemHead_t itemList[4];
+
+static MOLOCH_LOCK_DEFINE(itemHash);
+static MOLOCH_LOCK_DEFINE(itemList);
 
 /******************************************************************************/
 int wise_item_cmp(const void *keyv, const void *elementv)
@@ -217,7 +216,9 @@ void wise_free_ops(WiseItem_t *wi)
 void wise_free_item(WiseItem_t *wi)
 {
     int i;
+    MOLOCH_LOCK(itemHash);
     HASH_REMOVE(wih_, itemHash[(int)wi->type], wi);
+    MOLOCH_UNLOCK(itemHash);
     if (wi->sessions) {
         for (i = 0; i < wi->numSessions; i++) {
             moloch_session_decr_outstanding(wi->sessions[i]);
@@ -330,12 +331,14 @@ void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
         wi->sessions = 0;
         wi->numSessions = 0;
 
+        MOLOCH_LOCK(itemList);
         DLL_PUSH_HEAD(wil_, &itemList[(int)wi->type], wi);
         // Cache needs to be reduced
         if (itemList[(int)wi->type].wil_count > maxCache) {
             DLL_POP_TAIL(wil_, &itemList[(int)wi->type], wi);
             wise_free_item(wi);
         }
+        MOLOCH_UNLOCK(itemList);
     }
     MOLOCH_TYPE_FREE(WiseRequest_t, request);
 }
@@ -357,7 +360,9 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
     stats[type][INTEL_STAT_LOOKUP]++;
 
     WiseItem_t *wi;
+    MOLOCH_LOCK(itemHash);
     HASH_FIND(wih_, itemHash[type], value, wi);
+    MOLOCH_UNLOCK(itemHash);
 
     if (wi) {
         // Already being looked up
@@ -380,7 +385,9 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
         }
 
         /* Had it in cache, but it is too old */
+        MOLOCH_LOCK(itemList);
         DLL_REMOVE(wil_, &itemList[type], wi);
+        MOLOCH_UNLOCK(itemList);
         wise_free_ops(wi);
     } else {
         // Know nothing about it
@@ -388,7 +395,9 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
         wi->key          = g_strdup(value);
         wi->type         = type;
         wi->sessionsSize = 20;
+        MOLOCH_LOCK(itemHash);
         HASH_ADD(wih_, itemHash[type], wi->key, wi);
+        MOLOCH_UNLOCK(itemHash);
     }
 
     wi->sessions = malloc(sizeof(MolochSession_t *) * wi->sessionsSize);
@@ -463,12 +472,14 @@ void wise_lookup_ip(MolochSession_t *session, WiseRequest_t *request, uint32_t i
 }
 /******************************************************************************/
 static WiseRequest_t *iRequest = 0;
+static MOLOCH_LOCK_DEFINE(iRequest);
 static char          *iBuf = 0;
 /******************************************************************************/
 gboolean wise_flush(gpointer UNUSED(user_data))
 {
+    MOLOCH_LOCK(iRequest);
     if (!iRequest || iRequest->numItems == 0)
-        return TRUE;
+        goto cleanup;
 
     inflight += iRequest->numItems;
     if (moloch_http_send(wiseService, "POST", "/get", 4, iBuf, BSB_LENGTH(iRequest->bsb), NULL, TRUE, wise_cb, iRequest) != 0) {
@@ -479,6 +490,8 @@ gboolean wise_flush(gpointer UNUSED(user_data))
     iRequest = 0;
     iBuf     = 0;
 
+cleanup:
+    MOLOCH_UNLOCK(iRequest);
     return TRUE;
 }
 /******************************************************************************/
@@ -487,6 +500,7 @@ void wise_plugin_pre_save(MolochSession_t *session, int UNUSED(final))
 {
     MolochString_t *hstring;
 
+    MOLOCH_LOCK(iRequest);
     if (!iRequest) {
         iRequest = MOLOCH_TYPE_ALLOC(WiseRequest_t);
         iBuf = moloch_http_get_buffer(0xffff);
@@ -495,8 +509,14 @@ void wise_plugin_pre_save(MolochSession_t *session, int UNUSED(final))
     }
 
     //IPs
-    wise_lookup_ip(session, iRequest, session->addr1);
-    wise_lookup_ip(session, iRequest, session->addr2);
+    //ALW Fix - when wise supports v6
+    if (IN6_IS_ADDR_V4MAPPED(&session->addr1)) {
+        wise_lookup_ip(session, iRequest, MOLOCH_V6_TO_V4(session->addr1));
+    }
+
+    if (IN6_IS_ADDR_V4MAPPED(&session->addr2)) {
+        wise_lookup_ip(session, iRequest, MOLOCH_V6_TO_V4(session->addr2));
+    }
 
 
     //Domains
@@ -553,6 +573,7 @@ void wise_plugin_pre_save(MolochSession_t *session, int UNUSED(final))
         );
     }
 
+    MOLOCH_UNLOCK(iRequest);
     if (iRequest->numItems > 128) {
         wise_flush(0);
     }

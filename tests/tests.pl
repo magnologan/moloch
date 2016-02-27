@@ -46,6 +46,7 @@ sub sortJson {
             }
         }
     }
+    return $json;
 }
 ################################################################################
 sub doTests {
@@ -75,7 +76,6 @@ sub doTests {
 
         my $testData = `$cmd`;
         my $testJson = sortJson(from_json($testData, {relaxed => 1}));
-
         eq_or_diff($testJson, $savedJson, "$filename", { context => 3 });
     }
 }

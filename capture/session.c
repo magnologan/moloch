@@ -21,7 +21,7 @@
 /******************************************************************************/
 extern MolochConfig_t        config;
 extern uint32_t              pluginsCbs;
-extern time_t                lastPacketSecs;
+extern time_t                lastPacketSecs[MOLOCH_MAX_PACKET_THREADS];
 
 /******************************************************************************/
 
@@ -57,52 +57,61 @@ static MolochSesCmdHead_t   sessionCmds[MOLOCH_MAX_PACKET_THREADS];
 /******************************************************************************/
 void moloch_session_id (char *buf, uint32_t addr1, uint16_t port1, uint32_t addr2, uint16_t port2)
 {
+    buf[0] = 13;
     if (addr1 < addr2) {
-        *(uint32_t *)buf = addr1;
-        *(uint16_t *)(buf+4) = port1;
-        *(uint32_t *)(buf+6) = addr2;
-        *(uint16_t *)(buf+10) = port2;
+        memcpy(buf+1, &addr1, 4);
+        memcpy(buf+5, &port1, 2);
+        memcpy(buf+7, &addr2, 4);
+        memcpy(buf+11, &port2, 2);
     } else if (addr1 > addr2) {
-        *(uint32_t *)buf = addr2;
-        *(uint16_t *)(buf+4) = port2;
-        *(uint32_t *)(buf+6) = addr1;
-        *(uint16_t *)(buf+10) = port1;
+        memcpy(buf+1, &addr2, 4);
+        memcpy(buf+5, &port2, 2);
+        memcpy(buf+7, &addr1, 4);
+        memcpy(buf+11, &port1, 2);
     } else if (ntohs(port1) < ntohs(port2)) {
-        *(uint32_t *)buf = addr1;
-        *(uint16_t *)(buf+4) = port1;
-        *(uint32_t *)(buf+6) = addr2;
-        *(uint16_t *)(buf+10) = port2;
+        memcpy(buf+1, &addr1, 4);
+        memcpy(buf+5, &port1, 2);
+        memcpy(buf+7, &addr2, 4);
+        memcpy(buf+11, &port2, 2);
     } else {
-        *(uint32_t *)buf = addr2;
-        *(uint16_t *)(buf+4) = port2;
-        *(uint32_t *)(buf+6) = addr1;
-        *(uint16_t *)(buf+10) = port1;
+        memcpy(buf+1, &addr2, 4);
+        memcpy(buf+5, &port2, 2);
+        memcpy(buf+7, &addr1, 4);
+        memcpy(buf+11, &port1, 2);
     }
 }
 /******************************************************************************/
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#define int_ntoa(x)     inet_ntoa(*((struct in_addr *)(int*)&x))
-
-char *moloch_session_id_string (int protocol, uint32_t addr1, int port1, uint32_t addr2, int port2)
+void moloch_session_id6 (char *buf, uint8_t *addr1, uint16_t port1, uint8_t *addr2, uint16_t port2)
 {
-    static char buf[1000];
-    int         len;
-
-    if (addr1 < addr2) {
-        len = snprintf(buf, sizeof(buf), "%d;%s:%i,", protocol, int_ntoa(addr1), port1);
-        snprintf(buf+len, sizeof(buf) - len, "%s:%i", int_ntoa(addr2), port2);
-    } else if (addr1 > addr2) {
-        len = snprintf(buf, sizeof(buf), "%d;%s:%i,", protocol, int_ntoa(addr2), port2);
-        snprintf(buf+len, sizeof(buf) - len, "%s:%i", int_ntoa(addr1), port1);
-    } else if (port1 < port2) {
-        len = snprintf(buf, sizeof(buf), "%d;%s:%i,", protocol, int_ntoa(addr1), port1);
-        snprintf(buf+len, sizeof(buf) - len, "%s:%i", int_ntoa(addr2), port2);
+    buf[0] = 37;
+    int cmp = memcmp(addr1, addr2, 16);
+    if (cmp < 0) {
+        memcpy(buf+1, addr1, 16);
+        memcpy(buf+17, &port1, 2);
+        memcpy(buf+19, addr2, 16);
+        memcpy(buf+35, &port2, 2);
+    } else if (cmp > 0) {
+        memcpy(buf+1, addr2, 16);
+        memcpy(buf+17, &port2, 2);
+        memcpy(buf+19, addr1, 16);
+        memcpy(buf+35, &port1, 2);
+    } else if (ntohs(port1) < ntohs(port2)) {
+        memcpy(buf+1, addr1, 16);
+        memcpy(buf+17, &port1, 2);
+        memcpy(buf+19, addr2, 16);
+        memcpy(buf+35, &port2, 2);
     } else {
-        len = snprintf(buf, sizeof(buf), "%d;%s:%i,", protocol, int_ntoa(addr2), port2);
-        snprintf(buf+len, sizeof(buf) - len, "%s:%i", int_ntoa(addr1), port1);
+        memcpy(buf+1, addr2, 16);
+        memcpy(buf+17, &port2, 2);
+        memcpy(buf+19, addr1, 16);
+        memcpy(buf+35, &port1, 2);
     }
-
-    return buf;
+}
+/******************************************************************************/
+char *moloch_session_id_string (char *sessionId, char *buf)
+{
+    // ALW: Rewrite to make pretty
+    return moloch_sprint_hex_string(buf, (uint8_t *)sessionId, sessionId[0]);
 }
 /******************************************************************************/
 /* Must match moloch_session_cmp and moloch_session_id
@@ -123,8 +132,7 @@ int moloch_session_cmp(const void *keyv, const void *elementv)
 {
     MolochSession_t *session = (MolochSession_t *)elementv;
 
-    return (*(uint64_t *)keyv     == session->sessionIda && 
-            *(uint32_t *)(keyv+8) == session->sessionIdb);
+    return memcmp(keyv, session->sessionId, MIN(((uint8_t *)keyv)[0], session->sessionId[0])) == 0;
 }
 /******************************************************************************/
 void moloch_session_add_cmd(MolochSession_t *session, MolochSesCmd icmd, gpointer uw1, gpointer uw2, MolochCmd_func func)
@@ -410,8 +418,7 @@ MolochSession_t *moloch_session_find_or_create(int ses, char *sessionId, int *is
     session = MOLOCH_TYPE_ALLOC0(MolochSession_t);
     session->ses = ses;
 
-    memcpy(&session->sessionIda, sessionId, 8);
-    memcpy(&session->sessionIdb, sessionId+8, 4);
+    memcpy(session->sessionId, sessionId, sessionId[0]);
 
     HASH_ADD_HASH(h_, sessions[thread][ses], hash, sessionId, session);
     DLL_PUSH_TAIL(q_, &sessionsQ[thread][ses], session);
@@ -470,14 +477,13 @@ void moloch_session_process_commands(int thread)
     while (1) {
         session = DLL_PEEK_HEAD(q_, &closingQ[thread]);
 
-        if (session && session->saveTime < (uint64_t)lastPacketSecs) {
+        if (session && session->saveTime < (uint64_t)lastPacketSecs[thread]) {
             moloch_session_save(session);
         } else {
             break;
         }
     }
 
-#ifdef FIXLATER    
     // Sessions Idle Long Time
     int ses;
     for (ses = 0; ses < SESSION_MAX; ses++) {
@@ -485,7 +491,7 @@ void moloch_session_process_commands(int thread)
             session = DLL_PEEK_HEAD(q_, &sessionsQ[thread][ses]);
 
             if (session && (DLL_COUNT(q_, &sessionsQ[thread][ses]) > (int)config.maxStreams ||
-                            ((uint64_t)session->lastPacket.tv_sec + config.timeouts[ses] < (uint64_t)lastPacketSecs))) {
+                            ((uint64_t)session->lastPacket.tv_sec + config.timeouts[ses] < (uint64_t)lastPacketSecs[thread]))) {
 
                 moloch_session_save(session);
             } else {
@@ -498,14 +504,12 @@ void moloch_session_process_commands(int thread)
     while (1) {
         session = DLL_PEEK_HEAD(tcp_, &tcpWriteQ[thread]);
 
-        if (session && (uint64_t)session->saveTime < (uint64_t)lastPacketSecs) {
-            moloch_session_mid_save(session, lastPacketSecs);
+        if (session && (uint64_t)session->saveTime < (uint64_t)lastPacketSecs[thread]) {
+            moloch_session_mid_save(session, lastPacketSecs[thread]);
         } else {
             break;
         }
     }
-#endif
-
 }
 
 /******************************************************************************/
@@ -532,7 +536,7 @@ int moloch_session_idle_seconds(int ses)
         if (!session)
             continue;
 
-        tmp = lastPacketSecs - (session->lastPacket.tv_sec + config.timeouts[ses]);
+        tmp = lastPacketSecs[t] - (session->lastPacket.tv_sec + config.timeouts[ses]);
         if (tmp > idle)
             idle = tmp;
     }

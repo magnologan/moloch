@@ -16,12 +16,12 @@
 #include "tls-cipher.h"
 
 extern MolochConfig_t        config;
-static int                   certsField;
-static int                   hostField;
-static int                   verField;
-static int                   cipherField;
-static int                   srcIdField;
-static int                   dstIdField;
+LOCAL  int                   certsField;
+LOCAL  int                   hostField;
+LOCAL  int                   verField;
+LOCAL  int                   cipherField;
+LOCAL  int                   srcIdField;
+LOCAL  int                   dstIdField;
 
 typedef struct {
     unsigned char       buf[8192];
@@ -30,8 +30,6 @@ typedef struct {
 } TLSInfo_t;
 
 extern unsigned char    moloch_char_to_hexstr[256][3];
-
-static GChecksum       *checksum;
 
 /******************************************************************************/
 void
@@ -257,11 +255,17 @@ uint64_t tls_parse_time(int tag, unsigned char* value, int len)
 /******************************************************************************/
 void tls_process_server_certificate(MolochSession_t *session, const unsigned char *data, int len)
 {
+    static __thread GChecksum *checksum = 0;
+
     BSB cbsb;
 
     BSB_INIT(cbsb, data, len);
 
     BSB_IMPORT_skip(cbsb, 3); // Length again
+
+    if (!checksum) {
+        checksum = g_checksum_new(G_CHECKSUM_SHA1);
+    }
 
     while(BSB_REMAINING(cbsb) > 3) {
         int            badreason = 0;
@@ -711,7 +715,5 @@ void moloch_parser_init()
         NULL);
 
     moloch_parsers_classifier_register_tcp("tls", 0, (unsigned char*)"\x16\x03", 2, tls_classify);
-
-    checksum = g_checksum_new(G_CHECKSUM_SHA1);
 }
 

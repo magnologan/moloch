@@ -27,6 +27,10 @@ static gchar                 classTag[100];
 
 static magic_t               cookie[MOLOCH_MAX_PACKET_THREADS];
 
+extern unsigned char         moloch_char_to_hexstr[256][3];
+
+int    userField;
+
 /******************************************************************************/
 void moloch_parsers_magic(MolochSession_t *session, int field, const char *data, int len)
 {
@@ -184,6 +188,13 @@ void moloch_parsers_init()
         0,  MOLOCH_FIELD_FLAG_FAKE,
         NULL);
 
+    userField = moloch_field_define("general", "lotermfield",
+        "user", "User", "user",
+        "External user set for session",
+        MOLOCH_FIELD_TYPE_STR_HASH,  MOLOCH_FIELD_FLAG_CNT | MOLOCH_FIELD_FLAG_LINKED_SESSIONS,
+        "category", "user",
+        NULL);
+
     int flags = MAGIC_MIME;
 
     int t;
@@ -316,6 +327,18 @@ void moloch_print_hex_string(unsigned char* data, unsigned int length)
     }
 
     printf("\n");
+}
+/******************************************************************************/
+char *moloch_sprint_hex_string(char *buf, unsigned char* data, unsigned int length)
+{
+    unsigned int i;
+
+    for (i = 0; i < length; i++)
+    {
+        memcpy(buf+i*2, moloch_char_to_hexstr[data[i]], 2);
+    }
+    buf[i*2] = 0;
+    return buf;
 }
 /******************************************************************************/
 void  moloch_parsers_register2(MolochSession_t *session, MolochParserFunc func, void *uw, MolochParserFreeFunc ffunc, MolochParserSaveFunc sfunc)

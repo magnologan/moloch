@@ -72,6 +72,9 @@ function dateString(seconds, sep) {
 function ipString(ip) {
   return (ip>>24 & 0xff) + '.' + (ip>>16 & 0xff) + '.' + (ip>>8 & 0xff) + '.' + (ip & 0xff);
 }
+function ip6String(ip) {
+  return ip;
+}
 
 function removeArray(arr, value) {
   var pos = 0;

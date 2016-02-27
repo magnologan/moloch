@@ -32,7 +32,7 @@ static int ipField;
 static int hostField;
 static int srcField;
 static int dstField;
-static int userField;
+extern int userField;
 static int hhField;
 static int subField;
 static int ctField;

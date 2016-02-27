@@ -24,6 +24,7 @@
 #define __FAVOR_BSD
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <sys/time.h>
@@ -37,6 +38,10 @@
 
 
 #define MOLOCH_API_VERSION 14
+
+#define MOLOCH_SESSIONID_LEN 37
+
+#define MOLOCH_V6_TO_V4(_addr) (((uint32_t *)(_addr).s6_addr)[3])
 
 /******************************************************************************/
 /*
@@ -349,25 +354,23 @@ typedef struct {
 
 } MolochParserInfo_t;
 
-/******************************************************************************/
-#define MOLOCH_SESSIONID_LEN 12
 
 /******************************************************************************/
 typedef struct molochpacket_t
 {
     struct molochpacket_t   *packet_next, *packet_prev;
     struct timeval ts;      /* Timestamp */
-    char           sessionId[MOLOCH_SESSIONID_LEN];
-    const uint8_t *pkt;     /* Full Packet */
-    gpointer       writerData;
+    uint8_t       *pkt;     /* Full Packet */
+    char           sessionId[MOLOCH_SESSIONID_LEN]; // Needs to be removed
     uint64_t       writerFilePos;
+    uint64_t       readerFilePos;
+    char          *readerName;
     uint32_t       writerFileNum;
-    uint32_t       readerFilePos;
-    uint32_t       pktlen;  /* Length of this packet */
+    uint16_t       pktlen;  /* Length of this packet */
     uint16_t       payloadLen;
     uint8_t        payloadOffset;
+    uint8_t        ipOffset;
     uint8_t        direction:1;
-    uint8_t        notSaved:1;
     uint8_t        ses:3;
 } MolochPacket_t;
 
@@ -408,8 +411,8 @@ typedef struct moloch_session {
     int                    h_bucket;
     uint32_t               h_hash;
 
-    uint64_t               sessionIda;
-    uint32_t               sessionIdb;
+    char                   sessionId[MOLOCH_SESSIONID_LEN];
+
     MolochField_t        **fields;
 
     void                  **pluginData;
@@ -436,8 +439,8 @@ typedef struct moloch_session {
 
     uint32_t               lastFileNum;
     uint32_t               saveTime;
-    uint32_t               addr1;
-    uint32_t               addr2;
+    struct in6_addr        addr1;
+    struct in6_addr        addr2;
     uint32_t               packets[2];
 
     uint16_t               port1;
@@ -596,7 +599,6 @@ uint32_t moloch_db_peek_tag(const char *tagname);
 void     moloch_db_add_local_ip(char *str, MolochIpInfo_t *ii);
 void     moloch_db_add_field(char *group, char *kind, char *expression, char *friendlyName, char *dbField, char *help, va_list ap);
 void     moloch_db_update_field(char *expression, char *name, char *value);
-MolochIpInfo_t *moloch_db_get_local_ip(MolochSession_t *session, uint32_t ip);
 gboolean moloch_db_file_exists(char *filename);
 void     moloch_db_exit();
 
@@ -627,7 +629,8 @@ void  moloch_parsers_classifier_register_tcp_internal(const char *name, int offs
 void  moloch_parsers_classifier_register_udp_internal(const char *name, int offset, unsigned char *match, int matchlen, MolochClassifyFunc func, size_t sessionsize, int apiversion);
 #define moloch_parsers_classifier_register_udp(name, offset, match, matchlen, func) moloch_parsers_classifier_register_udp_internal(name, offset, match, matchlen, func, sizeof(MolochSession_t), MOLOCH_API_VERSION)
 
-void moloch_print_hex_string(unsigned char* data, unsigned int length);
+void  moloch_print_hex_string(unsigned char* data, unsigned int length);
+char *moloch_sprint_hex_string(char *buf, unsigned char* data, unsigned int length);
 
 /******************************************************************************/
 /*
@@ -664,8 +667,9 @@ gboolean moloch_http_is_moloch(uint32_t hash, char *key);
  */
 
 
-void    moloch_session_id (char *buf, uint32_t addr1, uint16_t port1, uint32_t addr2, uint16_t port2);
-char    *moloch_session_id_string (int protocol, uint32_t addr1, int port1, uint32_t addr2, int port2);
+void     moloch_session_id (char *buf, uint32_t addr1, uint16_t port1, uint32_t addr2, uint16_t port2);
+void     moloch_session_id6 (char *buf, uint8_t *addr1, uint16_t port1, uint8_t *addr2, uint16_t port2);
+char    *moloch_session_id_string (char *sessionId, char *buf);
 
 uint32_t moloch_session_hash(const void *key);
 int      moloch_session_cmp(const void *keyv, const void *elementv);
@@ -851,7 +855,6 @@ void moloch_field_exit();
 typedef void (*MolochWriterInit)(char *name);
 typedef uint32_t (*MolochWriterQueueLength)();
 typedef void (*MolochWriterWrite)(MolochPacket_t * const packet);
-typedef void (*MolochWriterFinish)(MolochPacket_t * const packet);
 typedef void (*MolochWriterFlush)(gboolean all);
 typedef void (*MolochWriterNextInput)(FILE *file, char *filename);
 typedef void (*MolochWriterExit)();
@@ -859,7 +862,6 @@ typedef char * (*MolochWriterName)();
 
 extern MolochWriterQueueLength moloch_writer_queue_length;
 extern MolochWriterWrite moloch_writer_write;
-extern MolochWriterFinish moloch_writer_finish;
 extern MolochWriterFlush moloch_writer_flush;
 extern MolochWriterExit moloch_writer_exit;
 extern MolochWriterNextInput moloch_writer_next_input;
@@ -919,12 +921,3 @@ void *moloch_trie_del_reverse(MolochTrie_t *trie, const char *key, const int len
  * js0n.c
  */
 int js0n(unsigned char *js, unsigned int len, unsigned int *out);
-
-/******************************************************************************/
-/*
- * writer-null.c
- *
- * These are special :)
- */
-void moloch_writer_null_write(MolochPacket_t * const packet);
-void moloch_writer_null_finish(MolochPacket_t * const packet);

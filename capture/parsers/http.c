@@ -295,9 +295,13 @@ moloch_hp_cb_on_header_field (http_parser *parser, const char *at, size_t length
         }
     }
 
-    size_t remaining = sizeof(http->header[http->which]) - strlen(http->header[http->which]) - 1;
-    if (remaining > 0)
-        strncat(http->header[http->which], at, MIN(length, remaining));
+    int len = strlen(http->header[http->which]);
+    size_t remaining = sizeof(http->header[http->which]) - len;
+    if (remaining > 1) {
+        int copy = MIN(length, remaining - 1);
+        memcpy(http->header[http->which] + len, at, copy);
+        http->header[http->which][len + copy] = 0;
+    }
 
     return 0;
 }

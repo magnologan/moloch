@@ -404,15 +404,15 @@ void moloch_yara_email_execute(MolochSession_t *session, const uint8_t *data, in
         return;
 
     if (first) {
-        block.data = data;
+        block.data = (uint8_t *)data;
         block.size = len;
         block.base = 0;
     } else if (len == 1) {
-        block.data = data+1;
+        block.data = (uint8_t *)data+1;
         block.size = len-1;
         block.base = 1;
     } else {
-        block.data = data+2;
+        block.data = (uint8_t *)data+2;
         block.size = len-2;
         block.base = 2;
     }

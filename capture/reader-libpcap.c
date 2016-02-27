@@ -55,7 +55,7 @@ void reader_libpcap_pcap_cb(u_char *UNUSED(user), const struct pcap_pkthdr *h, c
 
     MolochPacket_t *packet = MOLOCH_TYPE_ALLOC0(MolochPacket_t);
 
-    packet->pkt           = bytes,
+    packet->pkt           = (u_char *)bytes,
     packet->ts            = h->ts,
     packet->pktlen        = h->len,
 
@@ -64,7 +64,7 @@ void reader_libpcap_pcap_cb(u_char *UNUSED(user), const struct pcap_pkthdr *h, c
 /******************************************************************************/
 static void *reader_libpcap_thread()
 {
-    LOG("THREAD %p", pthread_self());
+    LOG("THREAD %p", (gpointer)pthread_self());
 
     while (1) {
         int r = pcap_loop(pcap, -1, reader_libpcap_pcap_cb, NULL);

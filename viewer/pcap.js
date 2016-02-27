@@ -325,9 +325,22 @@ Pcap.prototype.ip6 = function (buffer, obj, pos) {
     tc:     ((buffer[0] & 0xf) << 4) | ((buffer[1] >> 4) & 0xf),
     flow:   ((buffer[1] & 0xf) << 16) | (buffer[2] << 8) | buffer[3],
     len:    buffer.readUInt16BE(4),
-    nextHeader: buffer[6],
+    p: buffer[6],
     hopLimt:  buffer[7]
   };
+  switch(obj.ip.p) {
+  case 1:
+    this.icmp(buffer.slice(40, obj.ip.len), obj, pos + 40);
+    break;
+  case 6:
+    this.tcp(buffer.slice(40, obj.ip.len), obj, pos + 40);
+    break;
+  case 17:
+    this.udp(buffer.slice(40, obj.ip.len), obj, pos + 40);
+    break;
+  default:
+    console.log("Unknown ip.p", obj);
+  }
 };
 
 Pcap.prototype.ethertype = function(buffer, obj, pos) {

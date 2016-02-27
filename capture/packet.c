@@ -39,7 +39,7 @@ static int                   mac2Field;
 static int                   vlanField;
 static int                   greIpField;
 
-time_t                       lastPacketSecs;
+time_t                       lastPacketSecs[MOLOCH_MAX_PACKET_THREADS];
 
 /******************************************************************************/
 extern MolochSessionHead_t   tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
@@ -47,15 +47,12 @@ extern MolochSessionHead_t   tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
 static MolochPacketHead_t    packetQ[MOLOCH_MAX_PACKET_THREADS];
 
 
-MolochSession_t *moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int len);
+int moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int len);
 
 /******************************************************************************/
 void moloch_packet_free(MolochPacket_t *packet)
 {
-    if (packet->notSaved) 
-        moloch_writer_null_finish(packet);
-    else
-        moloch_writer_finish(packet);
+    g_free(packet->pkt);
     MOLOCH_TYPE_FREE(MolochPacket_t, packet);
 }
 /******************************************************************************/
@@ -263,7 +260,6 @@ LOCAL int moloch_packet_process_tcp(MolochSession_t * const session, MolochPacke
                         MOLOCH_TYPE_FREE(MolochTcpData_t, ftd);
                         ftd = td;
                     } else {
-                        moloch_packet_free(td->packet);
                         MOLOCH_TYPE_FREE(MolochTcpData_t, td);
                         return 1;
                     }
@@ -313,7 +309,6 @@ void moloch_packet_flush()
 /******************************************************************************/
 LOCAL void *moloch_packet_thread(void *threadp)
 {
-    MolochSession_t *session;
     MolochPacket_t  *packet;
     int thread = (long)threadp;
 
@@ -330,13 +325,139 @@ LOCAL void *moloch_packet_thread(void *threadp)
         if (!packet)
             continue;
 
-        session = moloch_session_find(packet->ses, packet->sessionId);
+        lastPacketSecs[thread] = packet->ts.tv_sec;
 
-        int freePacket = 1;
+        MolochSession_t     *session;
+        struct ip           *ip4 = (struct ip*)(packet->pkt + packet->ipOffset);
+        struct ip6_hdr      *ip6 = (struct ip6_hdr*)(packet->pkt + packet->ipOffset);
+        struct tcphdr       *tcphdr = 0;
+        struct udphdr       *udphdr = 0;
 
-        if (!session) {
-            LOG("ALW - shouldn't be new session %d - %p", thread, packet);
-            goto cleanup;
+        int isNew;
+        session = moloch_session_find_or_create(packet->ses, packet->sessionId, &isNew); // Returns locked session
+
+        if (isNew) {
+            session->saveTime = packet->ts.tv_sec + config.tcpSaveTimeout;
+            session->firstPacket = packet->ts;
+
+            if (ip4->ip_v == 4) {
+                session->protocol = ip4->ip_p;
+                ((uint32_t *)session->addr1.s6_addr)[2] = htonl(0xffff);
+                ((uint32_t *)session->addr1.s6_addr)[3] = ip4->ip_src.s_addr;
+                ((uint32_t *)session->addr2.s6_addr)[2] = htonl(0xffff);
+                ((uint32_t *)session->addr2.s6_addr)[3] = ip4->ip_dst.s_addr;
+                session->ip_tos = ip4->ip_tos;
+            } else {
+                session->protocol = ip6->ip6_nxt;
+                session->addr1 = ip6->ip6_src;
+                session->addr2 = ip6->ip6_dst;
+                session->ip_tos = ip4->ip_tos;
+            }
+            session->thread = thread;
+
+            moloch_parsers_initial_tag(session);
+
+            switch (session->protocol) {
+            case IPPROTO_TCP:
+                tcphdr = (struct tcphdr *)(packet->pkt + packet->payloadOffset);
+               /* If antiSynDrop option is set to true, capture will assume that
+                *if the syn-ack ip4 was captured first then the syn probably got dropped.*/
+                if ((tcphdr->th_flags & TH_SYN) && (tcphdr->th_flags & TH_ACK) && (config.antiSynDrop)) {
+                    struct in6_addr tmp;
+                    tmp = session->addr1;
+                    session->addr1 = session->addr2;
+                    session->addr2 = tmp;
+                    session->port1 = ntohs(tcphdr->th_dport);
+                    session->port2 = ntohs(tcphdr->th_sport);
+                } else {
+                    session->port1 = ntohs(tcphdr->th_sport);
+                    session->port2 = ntohs(tcphdr->th_dport);
+                }
+                if (moloch_http_is_moloch(session->h_hash, packet->sessionId)) {
+                    if (config.debug) {
+                        char buf[1000];
+                        LOG("Ignoring connection %s", moloch_session_id_string(session->sessionId, buf));
+                    }
+                    session->stopSPI = 1;
+                    session->stopSaving = 1;
+                }
+                break;
+            case IPPROTO_UDP:
+                udphdr = (struct udphdr *)(packet->pkt + packet->payloadOffset);
+                session->port1 = ntohs(udphdr->uh_sport);
+                session->port2 = ntohs(udphdr->uh_dport);
+                break;
+            case IPPROTO_ICMP:
+                break;
+            }
+
+            if (pluginsCbs & MOLOCH_PLUGIN_NEW)
+                moloch_plugins_cb_new(session);
+        }
+
+        int dir;
+        if (ip4->ip_v == 4) {
+            dir = (MOLOCH_V6_TO_V4(session->addr1) == ip4->ip_src.s_addr &&
+                   MOLOCH_V6_TO_V4(session->addr2) == ip4->ip_dst.s_addr);
+        } else {
+            dir = (memcmp(session->addr1.s6_addr, ip6->ip6_src.s6_addr, 16) == 0 &&
+                   memcmp(session->addr2.s6_addr, ip6->ip6_dst.s6_addr, 16) == 0);
+        }
+
+        packet->direction = 0;
+        switch (session->protocol) {
+        case IPPROTO_UDP:
+            udphdr = (struct udphdr *)(packet->pkt + packet->payloadOffset);
+            packet->direction = (dir &&
+                                 session->port1 == ntohs(udphdr->uh_sport) &&
+                                 session->port2 == ntohs(udphdr->uh_dport))?0:1;
+            session->databytes[packet->direction] += (packet->pktlen - 8);
+            break;
+        case IPPROTO_TCP:
+            tcphdr = (struct tcphdr *)(packet->pkt + packet->payloadOffset);
+            packet->direction = (dir &&
+                                 session->port1 == ntohs(tcphdr->th_sport) &&
+                                 session->port2 == ntohs(tcphdr->th_dport))?0:1;
+            session->tcp_flags |= tcphdr->th_flags;
+            break;
+        case IPPROTO_ICMP:
+            packet->direction = (dir)?0:1;
+            break;
+        }
+
+        /* Check if the stop saving bpf filters match */
+        if (session->packets[packet->direction] == 0 && session->stopSaving == 0 && config.dontSaveBPFsNum) {
+            int i = moloch_reader_should_filter(packet);
+            if (i >= 0)
+                session->stopSaving = config.dontSaveBPFsStop[i];
+        }
+
+        session->packets[packet->direction]++;
+        session->bytes[packet->direction] += packet->pktlen;
+        session->lastPacket = packet->ts;
+
+        uint32_t packets = session->packets[0] + session->packets[1];
+
+        if (session->stopSaving == 0 || packets < session->stopSaving) {
+            moloch_writer_write(packet);
+
+            int16_t len;
+            if (session->lastFileNum != packet->writerFileNum) {
+                session->lastFileNum = packet->writerFileNum;
+                g_array_append_val(session->fileNumArray, packet->writerFileNum);
+                int64_t pos = -1LL * packet->writerFileNum;
+                g_array_append_val(session->filePosArray, pos);
+                len = 0;
+                g_array_append_val(session->fileLenArray, len);
+            }
+
+            g_array_append_val(session->filePosArray, packet->writerFilePos);
+            len = 16 + packet->pktlen;
+            g_array_append_val(session->fileLenArray, len);
+
+            if (packets >= config.maxPackets) {
+                moloch_session_mid_save(session, packet->ts.tv_sec);
+            }
         }
 
         if (pcapFileHeader.linktype == 1 && session->firstBytesLen[packet->direction] < 8) {
@@ -376,26 +497,7 @@ LOCAL void *moloch_packet_thread(void *threadp)
             }
         }
 
-        if (!packet->notSaved) {
-            int16_t len;
-            if (session->lastFileNum != packet->writerFileNum) {
-                session->lastFileNum = packet->writerFileNum;
-                g_array_append_val(session->fileNumArray, packet->writerFileNum);
-                int64_t pos = -1LL * packet->writerFileNum;
-                g_array_append_val(session->filePosArray, pos);
-                len = 0;
-                g_array_append_val(session->fileLenArray, len);
-            }
-
-            g_array_append_val(session->filePosArray, packet->writerFilePos);
-            len = 16 + packet->pktlen;
-            g_array_append_val(session->fileLenArray, len);
-
-            if (session->filePosArray->len - session->fileNumArray->len >= config.maxPackets) {
-                moloch_session_mid_save(session, packet->ts.tv_sec);
-            }
-        }
-
+        int freePacket = 1;
         switch(packet->ses) {
         case SESSION_ICMP:
             moloch_packet_process_icmp(session, packet);
@@ -409,7 +511,6 @@ LOCAL void *moloch_packet_thread(void *threadp)
             break;
         }
 
-cleanup:
         if (freePacket) {
             moloch_packet_free(packet);
         }
@@ -418,6 +519,7 @@ cleanup:
     return NULL;
 }
 
+#ifdef REDOAGAIN
 /******************************************************************************/
 void moloch_packet_gre4(MolochPacket_t * const packet, const struct ip *ip4, const uint8_t *data, int len)
 {
@@ -477,69 +579,12 @@ void moloch_packet_gre4(MolochPacket_t * const packet, const struct ip *ip4, con
         moloch_session_add_protocol(session, "gre");
     }
 }
+#endif
+
 /******************************************************************************/
-// ALW TODO: IP FRAGS!!!
-MolochSession_t *moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int len)
+int moloch_packet_ip(MolochPacket_t * const packet)
 {
-    struct ip           *ip4 = (struct ip*)data;
-    struct tcphdr       *tcphdr = 0;
-    struct udphdr       *udphdr = 0;
-
-    if (len < (int)sizeof(struct ip))
-        goto cleanup;
-
-    int ip_len = ntohs(ip4->ip_len);
-    if (len < ip_len)
-        goto cleanup;
-
-    int ip_hdr_len = 4 * ip4->ip_hl;
-    if (len < ip_hdr_len)
-        goto cleanup;
-
-    switch (ip4->ip_p) {
-    case IPPROTO_TCP:
-        if (len < ip_hdr_len + (int)sizeof(struct tcphdr)) {
-            goto cleanup;
-        }
-
-        tcphdr = (struct tcphdr *)((char*)ip4 + ip_hdr_len);
-
-        moloch_session_id(packet->sessionId, ip4->ip_src.s_addr, tcphdr->th_sport,
-                          ip4->ip_dst.s_addr, tcphdr->th_dport);
-        packet->ses = SESSION_TCP;
-        packet->payloadOffset = (uint8_t*)tcphdr - packet->pkt;
-        break;
-    case IPPROTO_UDP:
-        if (len < ip_hdr_len + (int)sizeof(struct udphdr)) {
-            goto cleanup;
-        }
-
-        udphdr = (struct udphdr *)((char*)ip4 + ip_hdr_len);
-
-        moloch_session_id(packet->sessionId, ip4->ip_src.s_addr, udphdr->uh_sport,
-                          ip4->ip_dst.s_addr, udphdr->uh_dport);
-        packet->ses = SESSION_UDP;
-        packet->payloadOffset = (uint8_t*)udphdr - packet->pkt;
-        break;
-    case IPPROTO_ICMP:
-        moloch_session_id(packet->sessionId, ip4->ip_src.s_addr, 0,
-                          ip4->ip_dst.s_addr, 0);
-        packet->ses = SESSION_ICMP;
-        packet->payloadOffset = (uint8_t*)ip4 - packet->pkt;
-        break;
-    case IPPROTO_GRE:
-        moloch_packet_gre4(packet, ip4, data + ip_hdr_len, len - ip_hdr_len);
-        goto cleanup;
-    default:
-        if (config.logUnknownProtocols)
-            LOG("Unknown protocol %d", ip4->ip_p);
-        goto cleanup;
-    }
-
-    packet->payloadLen = ip_len - ip_hdr_len;
-
     totalBytes += packet->pktlen;
-    lastPacketSecs = packet->ts.tv_sec;
 
     if (totalPackets == 0) {
         MolochReaderStats_t stats;
@@ -558,7 +603,7 @@ MolochSession_t *moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t 
             stats.total = totalPackets;
         }
 
-        LOG("packets: %" PRIu64 " current sessions: %u/%u oldest: %d - recv: %" PRIu64 " drop: %" PRIu64 " (%0.2f) queue: %d disk: %d tfq: %d close: %d",
+        LOG("packets: %" PRIu64 " current sessions: %u/%u oldest: %d - recv: %" PRIu64 " drop: %" PRIu64 " (%0.2f) queue: %d disk: %d packet: %d close: %d",
           totalPackets,
           moloch_session_watch_count(packet->ses),
           moloch_session_monitoring(),
@@ -573,172 +618,147 @@ MolochSession_t *moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t 
           );
     }
 
+    packet->pkt = g_memdup(packet->pkt, packet->pktlen);
+    uint32_t thread = moloch_session_hash(packet->sessionId) % config.packetThreads;
 
-    MolochSession_t *session;
+    MOLOCH_LOCK(packetQ[thread].lock);
+    DLL_PUSH_TAIL(packet_, &packetQ[thread], packet);
+    MOLOCH_UNLOCK(packetQ[thread].lock);
+    MOLOCH_COND_BROADCAST(packetQ[thread].lock);
+    return 0;
+}
+/******************************************************************************/
+int moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int len)
+{
+    struct ip           *ip4 = (struct ip*)data;
+    struct tcphdr       *tcphdr = 0;
+    struct udphdr       *udphdr = 0;
 
-    int isNew;
-    session = moloch_session_find_or_create(packet->ses, packet->sessionId, &isNew); // Returns locked session
+    if (len < (int)sizeof(struct ip))
+        return 1;
 
-    if (isNew) {
-        session->protocol = ip4->ip_p;
-        session->saveTime = packet->ts.tv_sec + config.tcpSaveTimeout;
-        session->firstPacket = packet->ts;
-        session->addr1 = ip4->ip_src.s_addr;
-        session->addr2 = ip4->ip_dst.s_addr;
-        session->ip_tos = ip4->ip_tos;
+    int ip_len = ntohs(ip4->ip_len);
+    if (len < ip_len)
+        return 1;
 
-        moloch_parsers_initial_tag(session);
+    int ip_hdr_len = 4 * ip4->ip_hl;
+    if (len < ip_hdr_len)
+        return 1;
 
-        switch (ip4->ip_p) {
-        case IPPROTO_TCP:
-           /* If antiSynDrop option is set to true, capture will assume that
-            *if the syn-ack ip4 was captured first then the syn probably got dropped.*/
-            if ((tcphdr->th_flags & TH_SYN) && (tcphdr->th_flags & TH_ACK) && (config.antiSynDrop)) {
-                session->addr1 = ip4->ip_dst.s_addr;
-                session->addr2 = ip4->ip_src.s_addr;
-                session->port1 = ntohs(tcphdr->th_dport);
-                session->port2 = ntohs(tcphdr->th_sport);
-            } else {
-                session->port1 = ntohs(tcphdr->th_sport);
-                session->port2 = ntohs(tcphdr->th_dport);
-            }
-            if (moloch_http_is_moloch(session->h_hash, packet->sessionId)) {
-                if (config.debug)
-                    LOG("Ignoring connection %s", moloch_session_id_string(session->protocol, session->addr1, session->port1, session->addr2, session->port2));
-                session->stopSPI = 1;
-                session->stopSaving = 1;
-            }
-            break;
-        case IPPROTO_UDP:
-            session->port1 = ntohs(udphdr->uh_sport);
-            session->port2 = ntohs(udphdr->uh_dport);
-            break;
-        case IPPROTO_ICMP:
-            session->port1 = 0;
-            session->port2 = 0;
-            break;
+    packet->ipOffset = (uint8_t*)data - packet->pkt;
+    packet->payloadOffset = packet->ipOffset + ip_hdr_len;
+    packet->payloadLen = ip_len - ip_hdr_len;
+
+    switch (ip4->ip_p) {
+    case IPPROTO_TCP:
+        if (len < ip_hdr_len + (int)sizeof(struct tcphdr)) {
+            return 1;
         }
 
-        if (pluginsCbs & MOLOCH_PLUGIN_NEW)
-            moloch_plugins_cb_new(session);
-    }
-
-    packet->direction = 0;
-    switch (ip4->ip_p) {
-    case IPPROTO_UDP:
-        packet->direction = (session->addr1 == ip4->ip_src.s_addr &&
-                             session->addr2 == ip4->ip_dst.s_addr &&
-                             session->port1 == ntohs(udphdr->uh_sport) &&
-                             session->port2 == ntohs(udphdr->uh_dport))?0:1;
-        session->databytes[packet->direction] += (packet->pktlen - 8);
+        tcphdr = (struct tcphdr *)((char*)ip4 + ip_hdr_len);
+        moloch_session_id(packet->sessionId, ip4->ip_src.s_addr, tcphdr->th_sport,
+                          ip4->ip_dst.s_addr, tcphdr->th_dport);
+        packet->ses = SESSION_TCP;
         break;
-    case IPPROTO_TCP:
-        packet->direction = (session->addr1 == ip4->ip_src.s_addr &&
-                             session->addr2 == ip4->ip_dst.s_addr &&
-                             session->port1 == ntohs(tcphdr->th_sport) &&
-                             session->port2 == ntohs(tcphdr->th_dport))?0:1;
-        session->tcp_flags |= tcphdr->th_flags;
+    case IPPROTO_UDP:
+        if (len < ip_hdr_len + (int)sizeof(struct udphdr)) {
+            return 1;
+        }
+
+        udphdr = (struct udphdr *)((char*)ip4 + ip_hdr_len);
+
+        moloch_session_id(packet->sessionId, ip4->ip_src.s_addr, udphdr->uh_sport,
+                          ip4->ip_dst.s_addr, udphdr->uh_dport);
+        packet->ses = SESSION_UDP;
         break;
     case IPPROTO_ICMP:
-        packet->direction = (session->addr1 == ip4->ip_src.s_addr &&
-                             session->addr2 == ip4->ip_dst.s_addr)?0:1;
+        moloch_session_id(packet->sessionId, ip4->ip_src.s_addr, 0,
+                          ip4->ip_dst.s_addr, 0);
+        packet->ses = SESSION_ICMP;
         break;
-    }
-
-    /* Check if the stop saving bpf filters match */
-    if (session->packets[packet->direction] == 0 && session->stopSaving == 0 && config.dontSaveBPFsNum) {
-        int i = moloch_reader_should_filter(packet);
-        if (i >= 0)
-            session->stopSaving = config.dontSaveBPFsStop[i];
-    }
-
-    session->packets[packet->direction]++;
-    session->bytes[packet->direction] += packet->pktlen;
-    session->lastPacket = packet->ts;
-
-    uint32_t packets = session->packets[0] + session->packets[1];
-
-    if (session->stopSaving == 0 || packets < session->stopSaving) {
-        moloch_writer_write(packet);
-    } else {
-        packet->notSaved = 1;
-        moloch_writer_null_write(packet);
-    }
-
-    session->thread = session->h_hash % config.packetThreads;
-    MOLOCH_LOCK(packetQ[session->thread].lock);
-    DLL_PUSH_TAIL(packet_, &packetQ[session->thread], packet);
-    MOLOCH_UNLOCK(packetQ[session->thread].lock);
-    MOLOCH_COND_BROADCAST(packetQ[session->thread].lock);
-
-    return session;
-cleanup:
-    MOLOCH_TYPE_FREE(MolochPacket_t, packet);
-    return NULL;
-}
-
-#ifdef FOO
-{
-    uint16_t ip_off = ntohs(ip4->ip_off);
-    uint16_t ip_flags = ip_off & ~IP_OFFMASK;
-    ip_off &= IP_OFFMASK;
-    if (ip_flags & IP_MF) {
-        moloch_session_add_tag(session, "frag-flag");
-    }
-    if (ip_off > 0) {
-        moloch_session_add_tag(session, "frag-off");
-    }
-
-
-
-        uint32_t fileNum;
-        uint64_t filePos;
-        uint16_t fileLen = 16 + packet->pktlen;
-
-        moloch_writer_write(packet, &fileNum, &filePos);
-
-        if (session->lastFileNum != fileNum) {
-            session->lastFileNum = fileNum;
-            g_array_append_val(session->fileNumArray, fileNum);
-            int64_t pos = -1LL * fileNum;
-            g_array_append_val(session->filePosArray, pos);
-            int16_t len = 0;
-            g_array_append_val(session->fileLenArray, len);
-        }
-
-        g_array_append_val(session->filePosArray, filePos);
-        g_array_append_val(session->fileLenArray, fileLen);
-
-        if (packets >= config.maxPackets) {
-            moloch_session_mid_save(session, packet->ts.tv_sec);
-        }
-    }
-
-
-    /* Call any callbacks */
-    switch (ip4->ip_p) {
-    case IPPROTO_UDP:
-        moloch_packet_process_udp(session, udphdr, (unsigned char*)udphdr+8, ip_len - ip_hdr_len - 8, which);
-        break;
-    case IPPROTO_TCP:
-        moloch_packet_process_tcp(session, tcphdr, (unsigned char*)tcphdr + 4*tcphdr->th_off, ip_len - ip_hdr_len - 4 * tcphdr->th_off, which);
-        break;
-    }
-
-    return session;
-}
+#ifdef LATER
+    case IPPROTO_GRE:
+        return moloch_packet_gre4(packet, ip4, data + ip_hdr_len, len - ip_hdr_len);
 #endif
-/******************************************************************************/
-void moloch_packet_ip6(MolochPacket_t * const UNUSED(packet), const uint8_t *data, int len)
-{
-    data = 0;
-    len = 0;
+    default:
+        if (config.logUnknownProtocols)
+            LOG("Unknown protocol %d", ip4->ip_p);
+        return 1;
+    }
+
+    return moloch_packet_ip(packet);
 }
 /******************************************************************************/
-void moloch_packet_ether(MolochPacket_t * const packet, const uint8_t *data, int len)
+int moloch_packet_ip6(MolochPacket_t * const UNUSED(packet), const uint8_t *data, int len)
+{
+    struct ip6_hdr      *ip6 = (struct ip6_hdr *)data;
+    struct tcphdr       *tcphdr = 0;
+    struct udphdr       *udphdr = 0;
+
+    if (len < (int)sizeof(struct ip6_hdr))
+        return 1;
+
+    int ip_len = ntohs(ip6->ip6_plen);
+    if (len < ip_len)
+        return 1;
+
+    int ip_hdr_len = sizeof(struct ip6_hdr);
+
+    packet->ipOffset = (uint8_t*)data - packet->pkt;
+    packet->payloadOffset = packet->ipOffset + ip_hdr_len;
+    packet->payloadLen = ip_len - ip_hdr_len;
+
+
+    switch (ip6->ip6_nxt) {
+    case IPPROTO_TCP:
+        if (len < ip_hdr_len + (int)sizeof(struct tcphdr)) {
+            return 1;
+        }
+
+        tcphdr = (struct tcphdr *)((char*)ip6 + ip_hdr_len);
+
+        moloch_session_id6(packet->sessionId, ip6->ip6_src.s6_addr, tcphdr->th_sport,
+                           ip6->ip6_dst.s6_addr, tcphdr->th_dport);
+        packet->ses = SESSION_TCP;
+        break;
+    case IPPROTO_UDP:
+        if (len < ip_hdr_len + (int)sizeof(struct udphdr)) {
+            return 1;
+        }
+
+        udphdr = (struct udphdr *)((char*)ip6 + ip_hdr_len);
+
+        moloch_session_id6(packet->sessionId, ip6->ip6_src.s6_addr, udphdr->uh_sport,
+                           ip6->ip6_dst.s6_addr, udphdr->uh_dport);
+                          
+        packet->ses = SESSION_UDP;
+        break;
+    case IPPROTO_ICMP:
+        moloch_session_id6(packet->sessionId, ip6->ip6_src.s6_addr, 0,
+                           ip6->ip6_dst.s6_addr, 0);
+        packet->ses = SESSION_ICMP;
+        break;
+    case IPPROTO_ICMPV6:
+        moloch_session_id6(packet->sessionId, ip6->ip6_src.s6_addr, 0,
+                           ip6->ip6_dst.s6_addr, 0);
+        packet->ses = SESSION_ICMP;
+        break;
+#ifdef LATER
+    case IPPROTO_GRE:
+        return moloch_packet_gre4(packet, ip4, data + ip_hdr_len, len - ip_hdr_len);
+#endif
+    default:
+        LOG("Unknown protocol %d", ip6->ip6_nxt);
+        return 1;
+    }
+
+    return moloch_packet_ip(packet);
+}
+/******************************************************************************/
+int moloch_packet_ether(MolochPacket_t * const packet, const uint8_t *data, int len)
 {
     if (len < 14) {
-        return;
+        return 1;
     }
     int n = 12;
     while (n+2 < len) {
@@ -746,40 +766,45 @@ void moloch_packet_ether(MolochPacket_t * const packet, const uint8_t *data, int
         n += 2;
         switch (ethertype) {
         case 0x0800:
-            moloch_packet_ip4(packet, data+n, len - n);
-            return;
+            return moloch_packet_ip4(packet, data+n, len - n);
         case 0x86dd:
-            moloch_packet_ip6(packet, data+n, len - n);
-            return;
+            return moloch_packet_ip6(packet, data+n, len - n);
         case 0x8100:
             n += 2;
             break;
         default:
-            return;
+            return 1;
         } // switch
     }
+    return 0;
 }
 /******************************************************************************/
 void moloch_packet(MolochPacket_t * const packet)
 {
+    int rc;
+
     switch(pcapFileHeader.linktype) {
     case 0: // NULL
         if (packet->pktlen > 4)
-            moloch_packet_ip4(packet, packet->pkt+4, packet->pktlen-4);
+            rc = moloch_packet_ip4(packet, packet->pkt+4, packet->pktlen-4);
+        else
+            rc = 1;
         break;
     case 1: // Ether
-        moloch_packet_ether(packet, packet->pkt, packet->pktlen);
+        rc = moloch_packet_ether(packet, packet->pkt, packet->pktlen);
         break;
-    case 12: // RAw
-        moloch_packet_ip4(packet, packet->pkt, packet->pktlen);
+    case 12: // RAW
+        rc = moloch_packet_ip4(packet, packet->pkt, packet->pktlen);
         break;
     case 113: // SLL
-        moloch_packet_ip4(packet, packet->pkt, packet->pktlen);
+        rc = moloch_packet_ip4(packet, packet->pkt, packet->pktlen);
         break;
     default:
         LOG("ERROR - Unsupported pcap link type %d", pcapFileHeader.linktype);
         exit (0);
     }
+    if (rc)
+        MOLOCH_TYPE_FREE(MolochPacket_t, packet);
 }
 /******************************************************************************/
 int moloch_packet_outstanding()
@@ -831,6 +856,20 @@ void moloch_packet_init()
         "gre.ip", "GRE IP", "greip",
         "GRE ip addresses for session",
         MOLOCH_FIELD_TYPE_IP_GHASH,  MOLOCH_FIELD_FLAG_COUNT,
+        NULL);
+
+    moloch_field_define("general", "lotermfield",
+        "tipv6.src", "IPv6 Src", "tipv61-term",
+        "Temporary IPv6 Source",
+        0,  MOLOCH_FIELD_FLAG_FAKE,
+        "portField", "p1",
+        NULL);
+
+    moloch_field_define("general", "lotermfield",
+        "tipv6.dst", "IPv6 Dst", "tipv62-term",
+        "Temporary IPv6 Destination",
+        0,  MOLOCH_FIELD_FLAG_FAKE,
+        "portField", "p2",
         NULL);
 
     int t;

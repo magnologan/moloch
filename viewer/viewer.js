@@ -1350,7 +1350,7 @@ function sessionsListFromQuery(req, res, fields, cb) {
 
 function sessionsListFromIds(req, ids, fields, cb) {
   var list = [];
-  var nonArrayFields = ["pr", "fp", "lp", "a1", "p1", "g1", "a2", "p2", "g2", "by", "db", "pa", "no", "ro"];
+  var nonArrayFields = ["pr", "fp", "lp", "a1", "p1", "g1", "a2", "p2", "g2", "by", "db", "pa", "no", "ro", "tipv61-term", "tipv62-term"];
   var fixFields = nonArrayFields.filter(function(x) {return fields.indexOf(x) !== -1;});
 
   async.eachLimit(ids, 10, function(id, nextCb) {
@@ -1800,7 +1800,7 @@ app.get('/sessions.json', function(req, res) {
       res.send(r);
       return;
     }
-    query._source = ["pr", "ro", "db", "db1", "db2", "fp", "lp", "a1", "p1", "a2", "p2", "pa", "pa1", "pa2", "by", "by1", "by2", "no", "us", "g1", "g2", "esub", "esrc", "edst", "efn", "dnsho", "tls", "ircch"];
+    query._source = ["pr", "ro", "db", "db1", "db2", "fp", "lp", "a1", "p1", "a2", "p2", "pa", "pa1", "pa2", "by", "by1", "by2", "no", "us", "g1", "g2", "esub", "esrc", "edst", "efn", "dnsho", "tls", "ircch", "tipv61-term", "tipv62-term"];
 
     if (query.aggregations && query.aggregations.dbHisto) {
       graph.interval = query.aggregations.dbHisto.histogram.interval;
@@ -2414,6 +2414,9 @@ function csvListWriter(req, res, list, pcapWriter, extension) {
       break;
     case 17:
       pr =  "udp";
+      break;
+    case 58:
+      pr =  "icmpv6";
       break;
     }
 
@@ -3072,6 +3075,11 @@ function localSessionDetail(req, res) {
       });
     } else if (packets[0].ip.p === 17) {
       Pcap.reassemble_udp(packets, function(err, results) {
+        session._err = err;
+        localSessionDetailReturn(req, res, session, results || []);
+      });
+    } else if (packets[0].ip.p === 58) {
+      Pcap.reassemble_icmp(packets, function(err, results) {
         session._err = err;
         localSessionDetailReturn(req, res, session, results || []);
       });

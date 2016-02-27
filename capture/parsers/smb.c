@@ -149,7 +149,7 @@ void smb1_str_null_split(char *buf, int len, char **out, int max)
     memset(out, 0, max*sizeof(char *));
     out[0] = buf;
     int i, p;
-    for (i = 0, p=1; i < len && p < max; i++) {
+    for (i = 0, p=1; i < len-1 && p < max; i++) {
         if (buf[i] == 0) {
             out[p] = buf + i + 1;
             p++;

@@ -164,23 +164,42 @@ void tagger_plugin_save(MolochSession_t *session, int UNUSED(final))
     patricia_node_t *nodes[PATRICIA_MAXBITS+1];
     int cnt;
     prefix_t prefix;
-    prefix.family = AF_INET;
-    prefix.bitlen = 32;
 
     int i;
 
-    prefix.add.sin.s_addr = session->addr1;
+    if (IN6_IS_ADDR_V4MAPPED(&session->addr1)) {
+        prefix.family = AF_INET;
+        prefix.bitlen = 32;
+        prefix.add.sin.s_addr = MOLOCH_V6_TO_V4(session->addr1);
+    } else {
+        prefix.family = AF_INET;
+        prefix.bitlen = 128;
+        memcpy(&prefix.add.sin6.s6_addr, &session->addr1, 16);
+    }
+
     cnt = patricia_search_all(allIps, &prefix, 1, nodes);
     for (i = 0; i < cnt; i++) {
         tagger_process_match(session, ((TaggerIP_t *)(nodes[i]->data))->infos);
     }
 
-    prefix.add.sin.s_addr = session->addr2;
+    if (IN6_IS_ADDR_V4MAPPED(&session->addr2)) {
+        prefix.family = AF_INET;
+        prefix.bitlen = 32;
+        prefix.add.sin.s_addr = MOLOCH_V6_TO_V4(session->addr2);
+    } else {
+        prefix.family = AF_INET;
+        prefix.bitlen = 128;
+        memcpy(&prefix.add.sin6.s6_addr, &session->addr2, 16);
+    }
+
     cnt = patricia_search_all(allIps, &prefix, 1, nodes);
     for (i = 0; i < cnt; i++) {
         tagger_process_match(session, ((TaggerIP_t *)(nodes[i]->data))->infos);
     }
 
+    // ALW - Fix when we support ipv6 for other ips
+    prefix.family = AF_INET;
+    prefix.bitlen = 32;
     if (httpXffField != -1 && session->fields[httpXffField]) {
         if (config.fields[httpXffField]->type == MOLOCH_FIELD_TYPE_IP_HASH) {
             MolochIntHashStd_t *ihash = session->fields[httpXffField]->ihash;
@@ -707,7 +726,7 @@ void moloch_plugin_init()
     HASH_INIT(s_, allMD5s, moloch_string_hash, moloch_string_cmp);
     HASH_INIT(s_, allEmails, moloch_string_hash, moloch_string_cmp);
     HASH_INIT(s_, allURIs, moloch_string_hash, moloch_string_cmp);
-    allIps = New_Patricia(32);
+    allIps = New_Patricia(128);
 
     moloch_plugins_register("tagger", FALSE);
 
