@@ -371,7 +371,6 @@ writer_disk_write(MolochPacket_t * const packet)
 
     if (outputFilePos >= config.maxFileSizeB) {
         writer_disk_flush(TRUE);
-        g_free(outputFileName);
         outputFileName = 0;
     }
     MOLOCH_UNLOCK(output);
@@ -385,7 +384,6 @@ writer_disk_file_time_gfunc (gpointer UNUSED(user_data))
 
     if (outputFileName && outputFilePos > 24 && (tv.tv_sec - outputFileTime.tv_sec) >= config.maxFileTimeM*60) {
         writer_disk_flush(TRUE);
-        g_free(outputFileName);
         outputFileName = 0;
     }
 
