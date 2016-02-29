@@ -346,6 +346,7 @@ void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
 void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, int type)
 {
     static int lookups = 0;
+    WiseItem_t *wi;
 
     if (*value == 0)
         return;
@@ -353,16 +354,15 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
     if (request->numItems >= 256)
         return;
 
+    MOLOCH_LOCK(itemHash);
+
     lookups++;
     if ((lookups % 10000) == 0)
         wise_print_stats();
 
     stats[type][INTEL_STAT_LOOKUP]++;
 
-    WiseItem_t *wi;
-    MOLOCH_LOCK(itemHash);
     HASH_FIND(wih_, itemHash[type], value, wi);
-    MOLOCH_UNLOCK(itemHash);
 
     if (wi) {
         // Already being looked up
@@ -372,7 +372,7 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
                 moloch_session_incr_outstanding(session);
             }
             stats[type][INTEL_STAT_INPROGRESS]++;
-            return;
+            goto cleanup;
         }
 
         struct timeval currentTime;
@@ -381,7 +381,7 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
         if (wi->loadTime + cacheSecs > currentTime.tv_sec) {
             wise_process_ops(session, wi);
             stats[type][INTEL_STAT_CACHE]++;
-            return;
+            goto cleanup;
         }
 
         /* Had it in cache, but it is too old */
@@ -395,9 +395,7 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
         wi->key          = g_strdup(value);
         wi->type         = type;
         wi->sessionsSize = 20;
-        MOLOCH_LOCK(itemHash);
         HASH_ADD(wih_, itemHash[type], wi->key, wi);
-        MOLOCH_UNLOCK(itemHash);
     }
 
     wi->sessions = malloc(sizeof(MolochSession_t *) * wi->sessionsSize);
@@ -412,6 +410,9 @@ void wise_lookup(MolochSession_t *session, WiseRequest_t *request, char *value, 
     BSB_EXPORT_ptr(request->bsb, value, len);
 
     request->items[request->numItems++] = wi;
+
+cleanup:
+    MOLOCH_UNLOCK(itemHash);
 }
 /******************************************************************************/
 void wise_lookup_domain(MolochSession_t *session, WiseRequest_t *request, char *domain)

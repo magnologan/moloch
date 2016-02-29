@@ -52,7 +52,8 @@ long writer_inplace_create(MolochPacket_t * const packet)
     stat(packet->readerName, &st);
 
     uint32_t outputId;
-    moloch_db_create_file(packet->ts.tv_sec, packet->readerName, st.st_size, 1, &outputId);
+    char *filename = moloch_db_create_file(packet->ts.tv_sec, packet->readerName, st.st_size, 1, &outputId);
+    g_free(filename);
     g_hash_table_insert(filePtr2Id, packet->readerName, (gpointer)(long)outputId);
     return outputId;
 }
@@ -77,11 +78,6 @@ writer_inplace_write_dryrun(MolochPacket_t * const packet)
     packet->writerFilePos = packet->readerFilePos;
 }
 /******************************************************************************/
-char *
-writer_inplace_name() {
-    return "hmm";
-}
-/******************************************************************************/
 void writer_inplace_init(char *UNUSED(name))
 {
     moloch_writer_queue_length = writer_inplace_queue_length;
@@ -91,7 +87,6 @@ void writer_inplace_init(char *UNUSED(name))
         moloch_writer_write    = writer_inplace_write_dryrun;
     else
         moloch_writer_write    = writer_inplace_write;
-    moloch_writer_name         = writer_inplace_name;
 
     filePtr2Id = g_hash_table_new(g_direct_hash, g_direct_equal);
 }

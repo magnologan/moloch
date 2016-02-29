@@ -371,6 +371,7 @@ writer_disk_write(MolochPacket_t * const packet)
 
     if (outputFilePos >= config.maxFileSizeB) {
         writer_disk_flush(TRUE);
+        g_free(outputFileName);
         outputFileName = 0;
     }
     MOLOCH_UNLOCK(output);
@@ -384,17 +385,13 @@ writer_disk_file_time_gfunc (gpointer UNUSED(user_data))
 
     if (outputFileName && outputFilePos > 24 && (tv.tv_sec - outputFileTime.tv_sec) >= config.maxFileTimeM*60) {
         writer_disk_flush(TRUE);
+        g_free(outputFileName);
         outputFileName = 0;
     }
 
     return TRUE;
 }
 
-/******************************************************************************/
-char *
-writer_disk_name () {
-    return outputFileName;
-}
 /******************************************************************************/
 void writer_disk_init(char *name)
 {
@@ -442,7 +439,6 @@ void writer_disk_init(char *name)
 
     moloch_writer_exit         = writer_disk_exit;
     moloch_writer_write        = writer_disk_write;
-    moloch_writer_name         = writer_disk_name;
 
     if (config.maxFileTimeM > 0) {
         g_timeout_add_seconds( 30, writer_disk_file_time_gfunc, 0);

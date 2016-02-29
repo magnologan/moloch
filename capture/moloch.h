@@ -858,14 +858,12 @@ typedef void (*MolochWriterWrite)(MolochPacket_t * const packet);
 typedef void (*MolochWriterFlush)(gboolean all);
 typedef void (*MolochWriterNextInput)(FILE *file, char *filename);
 typedef void (*MolochWriterExit)();
-typedef char * (*MolochWriterName)();
 
 extern MolochWriterQueueLength moloch_writer_queue_length;
 extern MolochWriterWrite moloch_writer_write;
 extern MolochWriterFlush moloch_writer_flush;
 extern MolochWriterExit moloch_writer_exit;
 extern MolochWriterNextInput moloch_writer_next_input;
-extern MolochWriterName moloch_writer_name;
 
 
 void moloch_writers_init();

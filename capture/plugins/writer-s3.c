@@ -453,20 +453,12 @@ writer_s3_write(const MolochPacket_t *packet, uint32_t *fileNum, uint64_t *fileP
     }
 }
 /******************************************************************************/
-char *
-writer_s3_name() {
-    if (currentFile)
-        return currentFile->outputFileName;
-    return "s3-unknown";
-}
-/******************************************************************************/
 void writer_s3_init(char *UNUSED(name))
 {
     moloch_writer_queue_length = writer_s3_queue_length;
     moloch_writer_flush        = writer_s3_flush;
     moloch_writer_exit         = writer_s3_exit;
     moloch_writer_write        = writer_s3_write;
-    moloch_writer_name         = writer_s3_name;
 
     s3Region              = moloch_config_str(NULL, "s3Region", "us-east-1");
     s3Bucket              = moloch_config_str(NULL, "s3Bucket", NULL);

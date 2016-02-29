@@ -50,16 +50,10 @@ writer_null_write(MolochPacket_t * const packet)
     outputFilePos += 16 + packet->pktlen;
 }
 /******************************************************************************/
-char *
-writer_null_name() {
-    return "null";
-}
-/******************************************************************************/
 void writer_null_init(char *UNUSED(name))
 {
     moloch_writer_queue_length = writer_null_queue_length;
     moloch_writer_flush        = writer_null_flush;
     moloch_writer_exit         = writer_null_exit;
     moloch_writer_write        = writer_null_write;
-    moloch_writer_name         = writer_null_name;
 }

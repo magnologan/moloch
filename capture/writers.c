@@ -24,7 +24,6 @@ MolochWriterWrite moloch_writer_write;
 MolochWriterFlush moloch_writer_flush;
 MolochWriterExit moloch_writer_exit;
 MolochWriterNextInput moloch_writer_next_input;
-MolochWriterName moloch_writer_name;
 
 /******************************************************************************/
 extern MolochConfig_t        config;
