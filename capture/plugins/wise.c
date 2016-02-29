@@ -212,27 +212,29 @@ void wise_free_ops(WiseItem_t *wi)
     wi->ops = NULL;
 }
 /******************************************************************************/
+void wise_session_cmd_cb(MolochSession_t *session, gpointer uw1, gpointer UNUSED(uw2))
+{
+    WiseItem_t    *wi = uw1;
+
+    if (wi) {
+        wise_process_ops(session, wi);
+    }
+    moloch_session_decr_outstanding(session);
+}
+/******************************************************************************/
 void wise_free_item_unlocked(WiseItem_t *wi)
 {
     int i;
     HASH_REMOVE(wih_, itemHash[(int)wi->type], wi);
     if (wi->sessions) {
         for (i = 0; i < wi->numSessions; i++) {
-            moloch_session_decr_outstanding(wi->sessions[i]);
+            moloch_session_add_cmd(wi->sessions[i], MOLOCH_SES_CMD_FUNC, NULL, NULL, wise_session_cmd_cb);
         }
         g_free(wi->sessions);
     }
     g_free(wi->key);
     wise_free_ops(wi);
     MOLOCH_TYPE_FREE(WiseItem_t, wi);
-}
-/******************************************************************************/
-void wise_session_cmd_cb(MolochSession_t *session, gpointer uw1, gpointer UNUSED(uw2))
-{
-    WiseItem_t    *wi = uw1;
-
-    wise_process_ops(session, wi);
-    moloch_session_decr_outstanding(session);
 }
 /******************************************************************************/
 void wise_cb(int UNUSED(code), unsigned char *data, int data_len, gpointer uw)
