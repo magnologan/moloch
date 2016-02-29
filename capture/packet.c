@@ -77,7 +77,7 @@ LOCAL int32_t moloch_packet_sequence_diff (uint32_t a, uint32_t b)
     return b - a;
 }
 /******************************************************************************/
-LOCAL void moloch_packet_tcp_finish(MolochSession_t *session)
+void moloch_packet_tcp_finish(MolochSession_t *session)
 {
     MolochTcpData_t            *ftd;
     MolochTcpData_t            *next;
@@ -137,11 +137,11 @@ LOCAL void moloch_packet_tcp_finish(MolochSession_t *session)
 }
 
 /******************************************************************************/
-LOCAL void moloch_packet_process_icmp(MolochSession_t * const UNUSED(session), MolochPacket_t * const UNUSED(packet))
+void moloch_packet_process_icmp(MolochSession_t * const UNUSED(session), MolochPacket_t * const UNUSED(packet))
 {
 }
 /******************************************************************************/
-LOCAL void moloch_packet_process_udp(MolochSession_t * const session, MolochPacket_t * const packet)
+void moloch_packet_process_udp(MolochSession_t * const session, MolochPacket_t * const packet)
 {
     const uint8_t *data = packet->pkt + packet->payloadOffset + 8;
     int            len = packet->payloadLen - 8;
@@ -158,7 +158,7 @@ LOCAL void moloch_packet_process_udp(MolochSession_t * const session, MolochPack
     }
 }
 /******************************************************************************/
-LOCAL int moloch_packet_process_tcp(MolochSession_t * const session, MolochPacket_t * const packet)
+int moloch_packet_process_tcp(MolochSession_t * const session, MolochPacket_t * const packet)
 {
     if (session->stopSPI || session->stopTCP)
         return 1;
