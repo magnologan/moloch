@@ -3029,7 +3029,7 @@ function localSessionDetail(req, res) {
         pcap.decode(buffer, obj);
       } catch (e) {
         obj = {ip: {p: "Error decoding" + e}};
-        console.trace("loadSessionDetail error", e);
+        console.trace("loadSessionDetail error", e.stack);
       }
     } else {
       obj = {ip: {p: "Empty"}};

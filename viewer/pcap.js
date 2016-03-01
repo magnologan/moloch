@@ -326,17 +326,20 @@ Pcap.prototype.ip6 = function (buffer, obj, pos) {
     flow:   ((buffer[1] & 0xf) << 16) | (buffer[2] << 8) | buffer[3],
     len:    buffer.readUInt16BE(4),
     p: buffer[6],
-    hopLimt:  buffer[7]
+    hopLimt:  buffer[7],
+    addr1:  buffer.slice(8,24),
+    addr2:  buffer.slice(24,40)
   };
   switch(obj.ip.p) {
   case 1:
-    this.icmp(buffer.slice(40, obj.ip.len), obj, pos + 40);
+  case 58:
+    this.icmp(buffer.slice(40, 40+obj.ip.len), obj, pos + 40);
     break;
   case 6:
-    this.tcp(buffer.slice(40, obj.ip.len), obj, pos + 40);
+    this.tcp(buffer.slice(40, 40+obj.ip.len), obj, pos + 40);
     break;
   case 17:
-    this.udp(buffer.slice(40, obj.ip.len), obj, pos + 40);
+    this.udp(buffer.slice(40, 40+obj.ip.len), obj, pos + 40);
     break;
   default:
     console.log("Unknown ip.p", obj);
