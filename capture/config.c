@@ -328,6 +328,8 @@ void moloch_config_load()
     config.geoipFile        = moloch_config_str(keyfile, "geoipFile", NULL);
     config.rirFile          = moloch_config_str(keyfile, "rirFile", NULL);
     config.geoipASNFile     = moloch_config_str(keyfile, "geoipASNFile", NULL);
+    config.geoip6File       = moloch_config_str(keyfile, "geoip6File", NULL);
+    config.geoipASN6File    = moloch_config_str(keyfile, "geoipASN6File", NULL);
     config.dropUser         = moloch_config_str(keyfile, "dropUser", NULL);
     config.dropGroup        = moloch_config_str(keyfile, "dropGroup", NULL);
     config.pluginsDir       = moloch_config_str_list(keyfile, "pluginsDir", NULL);
@@ -572,6 +574,8 @@ void moloch_config_init()
         LOG("yara: %s", config.yara);
         LOG("geoipFile: %s", config.geoipFile);
         LOG("geoipASNFile: %s", config.geoipASNFile);
+        LOG("geoip6File: %s", config.geoip6File);
+        LOG("geoipASN6File: %s", config.geoipASN6File);
         LOG("rirFile: %s", config.rirFile);
         LOG("dropUser: %s", config.dropUser);
         LOG("dropGroup: %s", config.dropGroup);

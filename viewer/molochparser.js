@@ -718,6 +718,28 @@ global.moloch.utf8ToHex = function (utf8) {
     return hex;
 }
 
+global.moloch.ipv6ToHex = function (ip) {
+  if (ip.indexOf("*") !== -1 && ip.indexOf("::") !== -1) {
+    throw "Can't use :: in ipv6 and * at the same time";
+  }
+  var parts = ip.split(":");
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i].indexOf("*") !== -1) {
+      continue;
+    }
+    if (parts[i] === "") {
+      for (var j = 0; j <= 8 - parts.length; j++) {
+        parts[i] += "0000";
+      }
+    } else {
+      while (parts[i].length < 4) {
+        parts[i] = "0" + parts[i];
+      }
+    }
+  }
+  return parts.join("");
+}
+
 var protocols = {
     icmp: 1,
     tcp:  6,

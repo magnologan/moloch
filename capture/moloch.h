@@ -282,6 +282,8 @@ typedef struct moloch_config {
     char     *emailYara;
     char     *geoipFile;
     char     *geoipASNFile;
+    char     *geoip6File;
+    char     *geoipASN6File;
     char     *rirFile;
     char     *dropUser;
     char     *dropGroup;

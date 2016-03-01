@@ -72,7 +72,22 @@ function dateString(seconds, sep) {
 function ipString(ip) {
   return (ip>>24 & 0xff) + '.' + (ip>>16 & 0xff) + '.' + (ip>>8 & 0xff) + '.' + (ip & 0xff);
 }
+
 function ip6String(ip) {
+  var ip = ip.match(/.{1,4}/g).join(":").replace(/:0{1,3}/g, ":").replace(/^0000:/, "0:");
+  [/(^|:)0:0:0:0:0:0:0:0($|:)/,
+   /(^|:)0:0:0:0:0:0:0($|:)/,
+   /(^|:)0:0:0:0:0:0($|:)/,
+   /(^|:)0:0:0:0:0($|:)/,
+   /(^|:)0:0:0:0($|:)/,
+   /(^|:)0:0:0($|:)/,
+   /(^|:)0:0($|:)/].every(function(re) {
+     if (ip.match(re)) {
+       ip = ip.replace(re, "::");
+       return false;
+     }
+     return true;
+   });
   return ip;
 }
 

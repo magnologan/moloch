@@ -863,6 +863,7 @@ void moloch_packet_init()
         "Temporary IPv6 Source",
         0,  MOLOCH_FIELD_FLAG_FAKE,
         "portField", "p1",
+        "transform", "ipv6ToHex",
         NULL);
 
     moloch_field_define("general", "lotermfield",
@@ -870,6 +871,7 @@ void moloch_packet_init()
         "Temporary IPv6 Destination",
         0,  MOLOCH_FIELD_FLAG_FAKE,
         "portField", "p2",
+        "transform", "ipv6ToHex",
         NULL);
 
     int t;

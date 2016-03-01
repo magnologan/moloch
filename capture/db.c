@@ -433,21 +433,21 @@ void moloch_db_save_session(MolochSession_t *session, int final)
 
         if (gi6) {
             if (!g1) {
-                g1 = (char *)GeoIP_country_code3_by_ipnum_v6(gi, session->addr1);
+                g1 = (char *)GeoIP_country_code3_by_ipnum_v6(gi6, session->addr1);
             }
 
             if (!g2) {
-                g2 = (char *)GeoIP_country_code3_by_ipnum_v6(gi, session->addr2);
+                g2 = (char *)GeoIP_country_code3_by_ipnum_v6(gi6, session->addr2);
             }
         }
 
         if (giASN6) {
             if (!as1) {
-                as1 = GeoIP_name_by_ipnum_v6(giASN, session->addr1);
+                as1 = GeoIP_name_by_ipnum_v6(giASN6, session->addr1);
             }
 
             if (!as2) {
-                as2 = GeoIP_name_by_ipnum_v6(giASN, session->addr2);
+                as2 = GeoIP_name_by_ipnum_v6(giASN6, session->addr2);
             }
         }
     }
@@ -2119,6 +2119,15 @@ void moloch_db_init()
         GeoIP_set_charset(gi, GEOIP_CHARSET_UTF8);
     }
 
+    if (config.geoip6File) {
+        gi6 = GeoIP_open(config.geoip6File, GEOIP_MEMORY_CACHE);
+        if (!gi6) {
+            printf("Couldn't initialize GeoIP %s from %s", strerror(errno), config.geoip6File);
+            exit(1);
+        }
+        GeoIP_set_charset(gi6, GEOIP_CHARSET_UTF8);
+    }
+
     if (config.geoipASNFile) {
         giASN = GeoIP_open(config.geoipASNFile, GEOIP_MEMORY_CACHE);
         if (!giASN) {
@@ -2126,6 +2135,15 @@ void moloch_db_init()
             exit(1);
         }
         GeoIP_set_charset(giASN, GEOIP_CHARSET_UTF8);
+    }
+
+    if (config.geoipASN6File) {
+        giASN6 = GeoIP_open(config.geoipASN6File, GEOIP_MEMORY_CACHE);
+        if (!giASN6) {
+            printf("Couldn't initialize GeoIP ASN 6 %s from %s", strerror(errno), config.geoipASN6File);
+            exit(1);
+        }
+        GeoIP_set_charset(giASN6, GEOIP_CHARSET_UTF8);
     }
 
     moloch_db_load_rir();
