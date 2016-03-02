@@ -327,8 +327,8 @@ Pcap.prototype.ip6 = function (buffer, obj, pos) {
     len:    buffer.readUInt16BE(4),
     p: buffer[6],
     hopLimt:  buffer[7],
-    addr1:  buffer.slice(8,24),
-    addr2:  buffer.slice(24,40)
+    addr1:  buffer.slice(8,24).toString("hex"),
+    addr2:  buffer.slice(24,40).toString("hex")
   };
   switch(obj.ip.p) {
   case 1:
@@ -496,7 +496,7 @@ exports.reassemble_udp = function (packets, cb) {
 // Needs to be rewritten since its possible for packets to be
 // dropped by windowing and other things to actually be displayed allowed.
 // If multiple tcp sessions in one moloch session display can be wacky/wrong.
-exports.reassemble_tcp = function (packets, a1, cb) {
+exports.reassemble_tcp = function (packets, skey, cb) {
   try {
 
     // Remove syn, rst, 0 length packets and figure out min/max seq number
@@ -619,8 +619,8 @@ exports.reassemble_tcp = function (packets, a1, cb) {
       }
     });
 
-    if (a1 !== results[0].key) {
-      results.unshift({data: new Buffer(0), key: a1});
+    if (skey !== results[0].key) {
+      results.unshift({data: new Buffer(0), key: skey});
     }
     cb(null, results);
   } catch (e) {

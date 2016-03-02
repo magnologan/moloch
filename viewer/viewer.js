@@ -2840,7 +2840,13 @@ function processSessionIdAndDecode(id, numPackets, doneCb) {
         return doneCb(err, session, results);
       });
     } else if (packets[0].ip.p === 6) {
-      Pcap.reassemble_tcp(packets, Pcap.inet_ntoa(session.a1) + ':' + session.p1, function(err, results) {
+      var key;
+      if (session["tipv61-term"]) {
+        key = session["tipv61-term"];
+      } else {
+        key = Pcap.inet_ntoa(session.a1);
+      }
+      Pcap.reassemble_tcp(packets, key + ':' + session.p1, function(err, results) {
         return doneCb(err, session, results);
       });
     } else if (packets[0].ip.p === 17) {
@@ -3069,7 +3075,13 @@ function localSessionDetail(req, res) {
         localSessionDetailReturn(req, res, session, results || []);
       });
     } else if (packets[0].ip.p === 6) {
-      Pcap.reassemble_tcp(packets, Pcap.inet_ntoa(session.a1) + ':' + session.p1, function(err, results) {
+      var key;
+      if (session["tipv61-term"]) {
+        key = session["tipv61-term"];
+      } else {
+        key = Pcap.inet_ntoa(session.a1);
+      }
+      Pcap.reassemble_tcp(packets, key + ':' + session.p1, function(err, results) {
         session._err = err;
         localSessionDetailReturn(req, res, session, results || []);
       });
