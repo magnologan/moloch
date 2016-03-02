@@ -522,6 +522,12 @@ global.moloch.utf8ToHex = function (utf8) {
 }
 
 global.moloch.ipv6ToHex = function (ip) {
+  ip = stripQuotes(ip);
+  if (ip[0] === "[") {
+    var closing = ip.indexOf(']');
+    ip =  ip.substring(1, closing-1);
+  }
+
   if (ip.indexOf("*") !== -1 && ip.indexOf("::") !== -1) {
     throw "Can't use :: in ipv6 and * at the same time";
   }
@@ -544,9 +550,11 @@ global.moloch.ipv6ToHex = function (ip) {
 }
 
 var protocols = {
-    icmp: 1,
-    tcp:  6,
-    udp:  17
+    icmp:   1,
+    tcp:    6,
+    udp:    17,
+    icmp6:  58,
+    icmpv6: 58
 };
 
 global.moloch.ipProtocolLookup = function (text) {

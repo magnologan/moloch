@@ -71,12 +71,13 @@ static void *reader_libpcap_thread()
 
         // Some kind of failure we quit
         if (unlikely(r <= 0)) {
-            pcap_close(pcap);
             moloch_quit();
             pcap = 0;
             break;
         }
     }
+    //ALW - Need to close after packet finishes
+    //pcap_close(pcap);
     return NULL;
 }
 /******************************************************************************/

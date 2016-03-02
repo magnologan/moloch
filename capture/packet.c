@@ -849,7 +849,7 @@ void moloch_packet_init()
     vlanField = moloch_field_define("general", "integer",
         "vlan", "VLan", "vlan",
         "vlan value",
-        MOLOCH_FIELD_TYPE_INT_HASH,  MOLOCH_FIELD_FLAG_COUNT | MOLOCH_FIELD_FLAG_LINKED_SESSIONS,
+        MOLOCH_FIELD_TYPE_INT_GHASH,  MOLOCH_FIELD_FLAG_COUNT | MOLOCH_FIELD_FLAG_LINKED_SESSIONS,
         NULL);
 
     greIpField = moloch_field_define("general", "ip",
