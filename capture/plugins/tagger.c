@@ -29,7 +29,6 @@
 #include <ctype.h>
 #include "patricia.h"
 #include "moloch.h"
-#include "nids.h"
 
 
 /******************************************************************************/
