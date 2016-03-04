@@ -34,6 +34,7 @@ var internals = {
     1:  "icmp",
     6:  "tcp",
     17: "udp",
+    47: "gre",
     58: "icmpv6"
   },
   pcaps: {}
