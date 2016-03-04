@@ -95,7 +95,7 @@ void parse_args(int argc, char **argv)
         config.configFile = g_strdup("/data/moloch/etc/config.ini");
 
     if (showVersion) {
-        printf("moloch-capture %s session size=%zd\n", PACKAGE_VERSION, sizeof(MolochSession_t));
+        printf("moloch-capture %s session size=%zd packet size=%zd\n", PACKAGE_VERSION, sizeof(MolochSession_t), sizeof(MolochPacket_t));
         exit(0);
     }
 
@@ -549,7 +549,7 @@ void moloch_mlockall_init()
 /******************************************************************************/
 int main(int argc, char **argv)
 {
-    LOG("THREAD %p", pthread_self());
+    LOG("THREAD %p", (gpointer)pthread_self());
 
     signal(SIGHUP, reload);
     signal(SIGINT, cleanup);

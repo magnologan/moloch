@@ -363,7 +363,6 @@ typedef struct molochpacket_t
     struct molochpacket_t   *packet_next, *packet_prev;
     struct timeval ts;      /* Timestamp */
     uint8_t       *pkt;     /* Full Packet */
-    char           sessionId[MOLOCH_SESSIONID_LEN]; // Needs to be removed
     uint64_t       writerFilePos;
     uint64_t       readerFilePos;
     char          *readerName;
@@ -374,6 +373,7 @@ typedef struct molochpacket_t
     uint8_t        ipOffset;
     uint8_t        direction:1;
     uint8_t        ses:3;
+    uint8_t        v6:1;
 } MolochPacket_t;
 
 typedef struct
