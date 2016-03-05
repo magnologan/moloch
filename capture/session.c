@@ -25,16 +25,17 @@ extern time_t                lastPacketSecs[MOLOCH_MAX_PACKET_THREADS];
 
 /******************************************************************************/
 
-static int                   tagsField;
-static int                   protocolField;
+LOCAL int                   tagsField;
+LOCAL int                   protocolField;
 
 static MolochSessionHead_t   closingQ[MOLOCH_MAX_PACKET_THREADS];
 MolochSessionHead_t          tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
 
 typedef HASHP_VAR(h_, MolochSessionHash_t, MolochSessionHead_t);
 
-static MolochSessionHead_t   sessionsQ[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
-static MolochSessionHash_t   sessions[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
+LOCAL MolochSessionHead_t   sessionsQ[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
+LOCAL MolochSessionHash_t   sessions[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
+LOCAL int needSave;
 
 typedef struct molochsescmd {
     struct molochsescmd *cmd_next, *cmd_prev;
@@ -52,7 +53,8 @@ typedef struct {
     MOLOCH_LOCK_EXTERN(lock);
 } MolochSesCmdHead_t;
 
-static MolochSesCmdHead_t   sessionCmds[MOLOCH_MAX_PACKET_THREADS];
+LOCAL MolochSesCmdHead_t   sessionCmds[MOLOCH_MAX_PACKET_THREADS];
+
 
 /******************************************************************************/
 void moloch_session_id (char *buf, uint32_t addr1, uint16_t port1, uint32_t addr2, uint16_t port2)
@@ -300,6 +302,7 @@ LOCAL void moloch_session_save(MolochSession_t *session)
 
     if (session->outstandingQueries > 0) {
         session->needSave = 1;
+        needSave++;
         return;
     }
 
@@ -356,6 +359,7 @@ gboolean moloch_session_decr_outstanding(MolochSession_t *session)
 {
     session->outstandingQueries--;
     if (session->needSave && session->outstandingQueries == 0) {
+        needSave--;
         session->needSave = 0; /* Stop endless loop if plugins add tags */
         moloch_db_save_session(session, TRUE);
         moloch_session_free(session);
@@ -383,6 +387,11 @@ int moloch_session_cmd_outstanding()
         count += DLL_COUNT(cmd_, &sessionCmds[t]);
     }
     return count;
+}
+/******************************************************************************/
+int moloch_session_need_save_outstanding()
+{
+    return needSave;
 }
 /******************************************************************************/
 MolochSession_t *moloch_session_find(int ses, char *sessionId)
@@ -582,6 +591,7 @@ void moloch_session_init()
 
     moloch_add_can_quit(moloch_session_cmd_outstanding);
     moloch_add_can_quit(moloch_session_close_outstanding);
+    moloch_add_can_quit(moloch_session_need_save_outstanding);
 }
 /******************************************************************************/
 /* Only called on main thread. Wait for all packet threads to be empty and then 

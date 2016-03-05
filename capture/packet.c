@@ -640,7 +640,7 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
             stats.total = totalPackets;
         }
 
-        LOG("packets: %" PRIu64 " current sessions: %u/%u oldest: %d - recv: %" PRIu64 " drop: %" PRIu64 " (%0.2f) queue: %d disk: %d packet: %d close: %d",
+        LOG("packets: %" PRIu64 " current sessions: %u/%u oldest: %d - recv: %" PRIu64 " drop: %" PRIu64 " (%0.2f) queue: %d disk: %d packet: %d close: %d ns: %d",
           totalPackets,
           moloch_session_watch_count(packet->ses),
           moloch_session_monitoring(),
@@ -651,7 +651,8 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
           moloch_http_queue_length(esServer),
           moloch_writer_queue_length(),
           moloch_packet_outstanding(),
-          moloch_session_close_outstanding()
+          moloch_session_close_outstanding(),
+          moloch_session_need_save_outstanding()
           );
     }
 

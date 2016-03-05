@@ -47,8 +47,9 @@ script(type='text/javascript').
         dmetric("Memory", "memory"), 
         dmetric("CPU", "cpu"), 
         dmetric("Disk Queue", "diskQueue"),
-        dmetric("Magic Queue", "magicQueue"), 
         dmetric("ES Queue", "esQueue")
+        dmetric("Packet Queue", "packetQueue"), 
+        dmetric("Waiting Queue", "needSave"), 
       ])
       .enter().append("div")
         .attr("class", "horizon")

@@ -703,6 +703,7 @@ void     moloch_session_flush_internal(int thread);
 uint32_t moloch_session_monitoring();
 void     moloch_session_process_commands(int thread);
 
+int      moloch_session_need_save_outstanding();
 
 typedef enum { 
     MOLOCH_SES_CMD_ADD_TAG,

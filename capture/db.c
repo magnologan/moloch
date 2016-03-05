@@ -1215,6 +1215,7 @@ void moloch_db_update_stats()
         "\"diskQueue\": %u, "
         "\"esQueue\": %u, "
         "\"packetQueue\": %u, "
+        "\"needSave\": %u, "
         "\"totalPackets\": %" PRIu64 ", "
         "\"totalK\": %" PRIu64 ", "
         "\"totalSessions\": %" PRIu64 ", "
@@ -1234,6 +1235,7 @@ void moloch_db_update_stats()
         moloch_writer_queue_length?moloch_writer_queue_length():0,
         moloch_http_queue_length(esServer),
         moloch_packet_outstanding(),
+        moloch_session_need_save_outstanding(),
         dbTotalPackets,
         dbTotalK,
         dbTotalSessions,
@@ -1308,6 +1310,7 @@ void moloch_db_update_dstats(int n)
         "\"diskQueue\": %u, "
         "\"esQueue\": %u, "
         "\"packetQueue\": %u, "
+        "\"needSave\": %u, "
         "\"deltaPackets\": %" PRIu64 ", "
         "\"deltaBytes\": %" PRIu64 ", "
         "\"deltaSessions\": %" PRIu64 ", "
@@ -1324,6 +1327,7 @@ void moloch_db_update_dstats(int n)
         moloch_writer_queue_length?moloch_writer_queue_length():0,
         moloch_http_queue_length(esServer),
         moloch_packet_outstanding(),
+        moloch_session_need_save_outstanding(),
         (totalPackets - lastPackets[n]),
         (totalBytes - lastBytes[n]),
         (totalSessions - lastSessions[n]),
