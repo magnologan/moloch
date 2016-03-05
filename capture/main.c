@@ -568,7 +568,7 @@ int main(int argc, char **argv)
     if (config.pcapReadOffline)
         moloch_readers_set("libpcap-file");
     else
-        moloch_readers_set("libpcap");
+        moloch_readers_set(NULL);
     if (!config.pcapReadOffline) {
         moloch_drop_privileges();
         config.copyPcap = 1;

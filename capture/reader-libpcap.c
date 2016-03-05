@@ -28,8 +28,6 @@ extern MolochConfig_t        config;
 
 static pcap_t               *pcap;
 
-extern void                 *esServer;
-
 static struct bpf_program   *bpf_programs = 0;
 
 /******************************************************************************/
