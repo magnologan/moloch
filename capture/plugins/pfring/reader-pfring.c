@@ -23,12 +23,14 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <pfring.h>
+#include "pfring.h"
+#include "pcap.h"
 
 extern MolochConfig_t        config;
 extern MolochPcapFileHdr_t   pcapFileHeader;
 
-LOCAL pfring *ring;
+LOCAL pfring                *ring;
+LOCAL struct bpf_program    *bpf_programs = 0;
 
 /******************************************************************************/
 int reader_pfring_stats(MolochReaderStats_t *stats)
@@ -78,7 +80,8 @@ void reader_pfring_start() {
     pcapFileHeader.linktype = 1;
     pcapFileHeader.snaplen = 16384;
 
-/*
+
+    pcap_t *pcap = pcap_open_dead(pcapFileHeader.linktype, pcapFileHeader.snaplen);
     if (config.dontSaveBPFs) {
         int i;
         if (bpf_programs) {
@@ -86,7 +89,7 @@ void reader_pfring_start() {
                 pcap_freecode(&bpf_programs[i]);
             }
         } else {
-            bpf_programs= malloc(config.dontSaveBPFsNum*sizeof(struct bpf_program));
+            bpf_programs = malloc(config.dontSaveBPFsNum*sizeof(struct bpf_program));
         }
         for (i = 0; i < config.dontSaveBPFsNum; i++) {
             if (pcap_compile(pcap, &bpf_programs[i], config.dontSaveBPFs[i], 0, PCAP_NETMASK_UNKNOWN) == -1) {
@@ -95,7 +98,7 @@ void reader_pfring_start() {
             }
         }
     }
-*/
+    pcap_close(pcap);
 
     g_thread_new("moloch-pcap", &reader_pfring_thread, NULL);
 }
@@ -108,7 +111,7 @@ void reader_pfring_stop()
 /******************************************************************************/
 int reader_pfring_should_filter(const MolochPacket_t *UNUSED(packet))
 {
-/*    if (bpf_programs) {
+    if (bpf_programs) {
         int i;
         for (i = 0; i < config.dontSaveBPFsNum; i++) {
             if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
@@ -116,7 +119,7 @@ int reader_pfring_should_filter(const MolochPacket_t *UNUSED(packet))
                 break;
             }
         }
-    }*/
+    }
     return -1;
 }
 /******************************************************************************/
@@ -125,6 +128,15 @@ void reader_pfring_init(char *UNUSED(name))
     int flags = PF_RING_PROMISC | PF_RING_TIMESTAMP;
 
     ring = pfring_open(config.interface, 16384, flags);
+
+    if (config.bpf) {
+        int err = pfring_set_bpf_filter(ring, config.bpf);
+
+        if (err < 0) {
+            LOG("pfring set filter error %d  for  %s", err, config.bpf);
+            exit (1);
+        }
+    }
 
     int clusterId = moloch_config_int(NULL, "pfringClusterId", 0, 0, 255);
 

@@ -23,13 +23,16 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <daq.h>
+#include "daq.h"
+#include "pcap.h"
 
 extern MolochConfig_t        config;
 extern MolochPcapFileHdr_t   pcapFileHeader;
 
 LOCAL const DAQ_Module_t    *module;
 LOCAL void                  *handle;
+
+LOCAL struct bpf_program    *bpf_programs = 0;
 
 /******************************************************************************/
 int reader_daq_stats(MolochReaderStats_t *stats)
@@ -104,7 +107,8 @@ void reader_daq_start() {
     pcapFileHeader.linktype = daq_get_datalink_type(module, handle);
     pcapFileHeader.snaplen = 16384;
 
-/*
+
+    pcap_t *pcap = pcap_open_dead(pcapFileHeader.linktype, pcapFileHeader.snaplen);
     if (config.dontSaveBPFs) {
         int i;
         if (bpf_programs) {
@@ -121,7 +125,6 @@ void reader_daq_start() {
             }
         }
     }
-*/
 
     g_thread_new("moloch-pcap", &reader_daq_thread, NULL);
 }
@@ -134,7 +137,7 @@ void reader_daq_stop()
 /******************************************************************************/
 int reader_daq_should_filter(const MolochPacket_t *UNUSED(packet))
 {
-/*    if (bpf_programs) {
+    if (bpf_programs) {
         int i;
         for (i = 0; i < config.dontSaveBPFsNum; i++) {
             if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
@@ -142,7 +145,7 @@ int reader_daq_should_filter(const MolochPacket_t *UNUSED(packet))
                 break;
             }
         }
-    }*/
+    }
     return -1;
 }
 /******************************************************************************/

@@ -128,10 +128,14 @@ uint32_t moloch_config_int(GKeyFile *keyfile, char *key, uint32_t d, uint32_t mi
         value = g_key_file_get_integer(keyfile, "default", key, NULL);
     }
 
-    if (value < min)
+    if (value < min) {
+        LOG ("INFO: Reseting %s since %u is less then the min %u", key, value, min);
         value = min;
-    if (value > max)
+    }
+    if (value > max) {
+        LOG ("INFO: Reseting %s since %u is greater then the max %u", key, value, max);
         value = max;
+    }
 
     return value;
 }
