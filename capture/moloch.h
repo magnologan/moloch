@@ -857,16 +857,12 @@ void moloch_field_exit();
 
 typedef void (*MolochWriterInit)(char *name);
 typedef uint32_t (*MolochWriterQueueLength)();
-typedef void (*MolochWriterWrite)(MolochPacket_t * const packet);
-typedef void (*MolochWriterFlush)(gboolean all);
-typedef void (*MolochWriterNextInput)(FILE *file, char *filename);
+typedef void (*MolochWriterWrite)(const MolochSession_t * const session, MolochPacket_t * const packet);
 typedef void (*MolochWriterExit)();
 
 extern MolochWriterQueueLength moloch_writer_queue_length;
 extern MolochWriterWrite moloch_writer_write;
-extern MolochWriterFlush moloch_writer_flush;
 extern MolochWriterExit moloch_writer_exit;
-extern MolochWriterNextInput moloch_writer_next_input;
 
 
 void moloch_writers_init();

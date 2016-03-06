@@ -42,8 +42,7 @@ void writer_null_exit()
 {
 }
 /******************************************************************************/
-void
-writer_null_write(MolochPacket_t * const packet)
+void writer_null_write(const MolochSession_t * const UNUSED(session), MolochPacket_t * const packet)
 {
     packet->writerFileNum = 0;
     packet->writerFilePos = outputFilePos;
@@ -53,7 +52,6 @@ writer_null_write(MolochPacket_t * const packet)
 void writer_null_init(char *UNUSED(name))
 {
     moloch_writer_queue_length = writer_null_queue_length;
-    moloch_writer_flush        = writer_null_flush;
     moloch_writer_exit         = writer_null_exit;
     moloch_writer_write        = writer_null_write;
 }

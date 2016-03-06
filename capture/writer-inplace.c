@@ -59,8 +59,7 @@ long writer_inplace_create(MolochPacket_t * const packet)
 }
 
 /******************************************************************************/
-void
-writer_inplace_write(MolochPacket_t * const packet)
+void writer_inplace_write(const MolochSession_t * const UNUSED(session), MolochPacket_t * const packet)
 {
     MOLOCH_LOCK(filePtr2Id);
     long outputId = (long)g_hash_table_lookup(filePtr2Id, packet->readerName);
@@ -72,8 +71,7 @@ writer_inplace_write(MolochPacket_t * const packet)
     packet->writerFilePos = packet->readerFilePos;
 }
 /******************************************************************************/
-void
-writer_inplace_write_dryrun(MolochPacket_t * const packet)
+void writer_inplace_write_dryrun(const MolochSession_t * const UNUSED(session), MolochPacket_t * const packet)
 {
     packet->writerFilePos = packet->readerFilePos;
 }
@@ -81,7 +79,6 @@ writer_inplace_write_dryrun(MolochPacket_t * const packet)
 void writer_inplace_init(char *UNUSED(name))
 {
     moloch_writer_queue_length = writer_inplace_queue_length;
-    moloch_writer_flush        = writer_inplace_flush;
     moloch_writer_exit         = writer_inplace_exit;
     if (config.dryRun)
         moloch_writer_write    = writer_inplace_write_dryrun;

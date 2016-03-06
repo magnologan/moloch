@@ -342,7 +342,7 @@ struct pcap_sf_pkthdr {
     uint32_t pktlen;		/* length this packet (off wire) */
 };
 void
-writer_disk_write(MolochPacket_t * const packet)
+writer_disk_write(const MolochSession_t * const UNUSED(session), MolochPacket_t * const packet)
 {
     struct pcap_sf_pkthdr hdr;
 

@@ -476,7 +476,7 @@ LOCAL void *moloch_packet_thread(void *threadp)
         uint32_t packets = session->packets[0] + session->packets[1];
 
         if (session->stopSaving == 0 || packets < session->stopSaving) {
-            moloch_writer_write(packet);
+            moloch_writer_write(session, packet);
 
             int16_t len;
             if (session->lastFileNum != packet->writerFileNum) {

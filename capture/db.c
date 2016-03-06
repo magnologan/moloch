@@ -51,6 +51,9 @@ extern unsigned char    moloch_hex_to_char[256][256];
 
 static int tagsField = -1;
 
+LOCAL uint32_t nextFileNum;
+LOCAL MOLOCH_LOCK_DEFINE(nextFileNum);
+
 /******************************************************************************/
 extern MolochConfig_t        config;
 
@@ -1442,10 +1445,11 @@ uint32_t moloch_db_get_sequence_number_sync(char *name)
     }
 }
 /******************************************************************************/
-uint32_t nextFileNum;
 void moloch_db_fn_seq_cb(uint32_t newSeq, gpointer UNUSED(uw))
 {
+    MOLOCH_LOCK(nextFileNum);
     nextFileNum = newSeq;
+    MOLOCH_UNLOCK(nextFileNum);
 }
 /******************************************************************************/
 void moloch_db_load_file_num()
@@ -1526,6 +1530,7 @@ char *moloch_db_create_file(time_t firstPacket, char *name, uint64_t size, int l
     const uint64_t     fp = firstPacket;
 
 
+    MOLOCH_LOCK(nextFileNum);
     snprintf(key, sizeof(key), "fn-%s", config.nodeName);
     if (nextFileNum == 0) {
         /* If doing an offline file OR the last async call hasn't returned, just get a sync filenum */
@@ -1570,6 +1575,8 @@ char *moloch_db_create_file(time_t firstPacket, char *name, uint64_t size, int l
     }
 
     moloch_http_set(esServer, key, key_len, json, json_len, NULL, NULL);
+
+    MOLOCH_UNLOCK(nextFileNum);
 
     if (config.logFileCreation)
         LOG("Creating file %d with key >%s< using >%s<", num, key, json);

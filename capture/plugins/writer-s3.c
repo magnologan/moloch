@@ -71,6 +71,7 @@ static int                    inprogress;
 
 void writer_s3_request(char *method, char *path, char *qs, unsigned char *data, int len, gboolean reduce, MolochHttpResponse_cb cb, gpointer uw);
 
+static MOLOCH_LOCK_DEFINE(output);
 /******************************************************************************/
 uint32_t writer_s3_queue_length()
 {
@@ -421,7 +422,7 @@ struct pcap_sf_pkthdr {
     uint32_t len;		/* length this packet (off wire) */
 };
 void
-writer_s3_write(const MolochPacket_t *packet, uint32_t *fileNum, uint64_t *filePos)
+writer_s3_write(const MolochSession_t *const UNUSED(session), MolochPacket_t * const packet)
 {
     struct pcap_sf_pkthdr hdr;
 
@@ -430,6 +431,7 @@ writer_s3_write(const MolochPacket_t *packet, uint32_t *fileNum, uint64_t *fileP
     hdr.caplen     = packet->pktlen;
     hdr.len        = packet->pktlen;
 
+    MOLOCH_LOCK(output);
     if (!currentFile) {
         writer_s3_create(packet);
     }
@@ -444,19 +446,19 @@ writer_s3_write(const MolochPacket_t *packet, uint32_t *fileNum, uint64_t *fileP
         writer_s3_flush(FALSE);
     }
 
-    *fileNum = outputId;
-    *filePos = outputFilePos;
+    packet->writerFileNum = outputId;
+    packet->writerFilePos = outputFilePos;
     outputFilePos += 16 + packet->pktlen;
 
     if (outputFilePos >= config.maxFileSizeB) {
         writer_s3_flush(TRUE);
     }
+    MOLOCH_LOCK(output);
 }
 /******************************************************************************/
 void writer_s3_init(char *UNUSED(name))
 {
     moloch_writer_queue_length = writer_s3_queue_length;
-    moloch_writer_flush        = writer_s3_flush;
     moloch_writer_exit         = writer_s3_exit;
     moloch_writer_write        = writer_s3_write;
 

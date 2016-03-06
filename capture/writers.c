@@ -21,9 +21,7 @@
 
 MolochWriterQueueLength moloch_writer_queue_length;
 MolochWriterWrite moloch_writer_write;
-MolochWriterFlush moloch_writer_flush;
 MolochWriterExit moloch_writer_exit;
-MolochWriterNextInput moloch_writer_next_input;
 
 /******************************************************************************/
 extern MolochConfig_t        config;
