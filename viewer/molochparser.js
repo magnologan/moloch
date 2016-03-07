@@ -722,7 +722,7 @@ global.moloch.ipv6ToHex = function (ip) {
   ip = stripQuotes(ip);
   if (ip[0] === "[") {
     var closing = ip.indexOf(']');
-    ip =  ip.substring(1, closing-1);
+    ip =  ip.substring(1, closing);
   }
 
   if (ip.indexOf("*") !== -1 && ip.indexOf("::") !== -1) {
