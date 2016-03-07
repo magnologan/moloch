@@ -89,7 +89,7 @@ void writer_disk_alloc_buf(MolochDiskOutput_t *out)
         DLL_POP_HEAD(i_, &freeOutputBufs, tmp);
         out->buf = (void*)tmp;
     } else {
-        out->buf = mmap (0, config.pcapWriteSize + 20000, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
+        out->buf = mmap (0, config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
     }
 
     if (writeMethod & MOLOCH_WRITE_THREAD)
@@ -274,7 +274,7 @@ void writer_disk_flush(gboolean all)
         output->max = output->pos;
     } else {
         noutput->pos = output->pos - output->max;
-        memcpy(noutput->buf, output->buf + output->max, noutput->pos);
+        memmove(noutput->buf, output->buf + output->max, noutput->pos);
     }
     output->pos = 0;
 

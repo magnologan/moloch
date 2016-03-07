@@ -105,7 +105,7 @@ void reader_daq_start() {
     }
 
     pcapFileHeader.linktype = daq_get_datalink_type(module, handle);
-    pcapFileHeader.snaplen = 16384;
+    pcapFileHeader.snaplen = MOLOCH_SNAPLEN;
 
 
     pcap_t *pcap = pcap_open_dead(pcapFileHeader.linktype, pcapFileHeader.snaplen);
@@ -173,7 +173,7 @@ void reader_daq_init(char *UNUSED(name))
 
     memset(&cfg, 0, sizeof(cfg));
     cfg.name = config.interface;
-    cfg.snaplen = 16384;
+    cfg.snaplen = MOLOCH_SNAPLEN;
     cfg.timeout = -1;
     cfg.mode = DAQ_MODE_PASSIVE;
 

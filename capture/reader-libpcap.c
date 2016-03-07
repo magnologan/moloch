@@ -190,9 +190,9 @@ void reader_libpcap_init(char *UNUSED(name))
     char errbuf[1024];
 
 #ifdef SNF
-    pcap = pcap_open_live(config.interface, 16384, 1, 0, errbuf);
+    pcap = pcap_open_live(config.interface, MOLOCH_SNAPLEN, 1, 0, errbuf);
 #else
-    pcap = reader_libpcap_open_live(config.interface, 16384, 1, 0, errbuf);
+    pcap = reader_libpcap_open_live(config.interface, MOLOCH_SNAPLEN, 1, 0, errbuf);
 #endif
 
     if (!pcap) {
