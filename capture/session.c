@@ -634,8 +634,4 @@ void moloch_session_exit()
             counts[SESSION_ICMP]);
 
     moloch_session_flush();
-
-    if (!config.dryRun && config.copyPcap) {
-        moloch_writer_exit();
-    }
 }

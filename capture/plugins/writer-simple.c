@@ -1,8 +1,7 @@
 /******************************************************************************/
 /* writer-simple.c  -- Simple Writer Plugin
  *
- * This writer just creates a file per thread and writes to it, no
- * locks or copies to buffers required
+ * This writer just creates a file per thread and writes to it, no locks
  *
  * Copyright 2012-2016 AOL Inc. All rights reserved.
  *
@@ -30,12 +29,15 @@
 extern MolochConfig_t        config;
 extern MolochPcapFileHdr_t   pcapFileHeader;
 
+#define BUFSIZE 0xffff
 typedef struct  {
+    char       buf[BUFSIZE];
     pthread_t  self;
     char      *name;
     uint64_t   pos;
     uint32_t   id;
     int        fd;
+    int        bufpos;
 } MolochSimple_t;
 
 MolochSimple_t info[MOLOCH_MAX_PACKET_THREADS];
@@ -46,12 +48,25 @@ uint32_t writer_simple_queue_length()
     return 0;
 }
 /******************************************************************************/
+void writer_simple_write_buf(int thread)
+{
+    int pos = 0;
+    while (pos < info[thread].bufpos) {
+        int len = write(info[thread].fd, info[thread].buf + pos, info[thread].bufpos-pos);
+        if (len > 0) {
+            pos += len;
+        }
+    }
+    info[thread].bufpos = 0;
+}
+/******************************************************************************/
 void writer_simple_exit()
 {
     int thread;
 
     for (thread = 0; thread < config.packetThreads; thread++) {
         if (info[thread].fd) {
+            writer_simple_write_buf(thread);
             close(info[thread].fd);
             info[thread].fd = 0;
             g_free(info[thread].name);
@@ -88,8 +103,8 @@ void writer_simple_write(const MolochSession_t * const session, MolochPacket_t *
             LOG("ERROR - pcap open failed - Couldn't open file: '%s' with %s  (%d)", info[thread].name, strerror(errno), errno);
             exit(2);
         }
-        info[thread].pos = 24;
-        write(info[thread].fd, &pcapFileHeader, 24);
+        info[thread].pos = info[thread].bufpos = 24;
+        memcpy(info[thread].buf, &pcapFileHeader, 24);
         if (config.debug)
             LOG("opened %d %s %d", thread, info[thread].name, info[thread].fd);
     }
@@ -104,11 +119,18 @@ void writer_simple_write(const MolochSession_t * const session, MolochPacket_t *
     hdr.caplen     = packet->pktlen;
     hdr.pktlen     = packet->pktlen;
 
-    write(info[thread].fd, &hdr, 16);
-    write(info[thread].fd, packet->pkt, packet->pktlen);
+    if (info[thread].bufpos + 16 + packet->pktlen > BUFSIZE) {
+        writer_simple_write_buf(thread);
+    }
+
+    memcpy(info[thread].buf+info[thread].bufpos, &hdr, 16);
+    info[thread].bufpos += 16;
+    memcpy(info[thread].buf+info[thread].bufpos, packet->pkt, packet->pktlen);
+    info[thread].bufpos += packet->pktlen;
     info[thread].pos += 16 + packet->pktlen;
 
     if (info[thread].pos >= config.maxFileSizeB) {
+        writer_simple_write_buf(thread);
         close(info[thread].fd);
         info[thread].fd = 0;
         g_free(info[thread].name);

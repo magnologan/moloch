@@ -164,29 +164,11 @@ int moloch_size_free(void *mem)
     return size - 8;
 }
 /******************************************************************************/
-void cleanup(int UNUSED(sig))
+void controlc(int UNUSED(sig))
 {
+    LOG("Control-C");
     signal(SIGINT, exit); // Double Control-C quits right away
-
-    LOG("exiting");
-    if (moloch_reader_stop)
-        moloch_reader_stop();
-    moloch_plugins_exit();
-    moloch_parsers_exit();
-    moloch_yara_exit();
-    moloch_db_exit();
-    moloch_http_exit();
-    moloch_config_exit();
-    moloch_field_exit();
-
-
-    if (config.pcapReadFiles)
-        g_strfreev(config.pcapReadFiles);
-    if (config.pcapReadDirs)
-        g_strfreev(config.pcapReadDirs);
-    if (config.extraTags)
-        g_strfreev(config.extraTags);
-    exit(0);
+    moloch_quit();
 }
 /******************************************************************************/
 void reload(int UNUSED(sig))
@@ -435,6 +417,8 @@ static gboolean firstRun   = TRUE;
 // On the first run shutdown reader and stuff
     if (firstRun) {
         firstRun = FALSE;
+        if (moloch_reader_stop)
+            moloch_reader_stop();
         moloch_readers_exit();
         moloch_packet_exit();
         moloch_session_exit();
@@ -552,7 +536,7 @@ int main(int argc, char **argv)
     LOG("THREAD %p", (gpointer)pthread_self());
 
     signal(SIGHUP, reload);
-    signal(SIGINT, cleanup);
+    signal(SIGINT, controlc);
     signal(SIGUSR1, exit);
     signal(SIGCHLD, SIG_IGN);
 
@@ -586,6 +570,26 @@ int main(int argc, char **argv)
     g_timeout_add(1, moloch_ready_gfunc, 0);
 
     g_main_loop_run(mainLoop);
-    cleanup(0);
+
+    LOG("Final cleanup");
+    moloch_plugins_exit();
+    moloch_parsers_exit();
+    moloch_yara_exit();
+    moloch_db_exit();
+    moloch_http_exit();
+    moloch_config_exit();
+    moloch_field_exit();
+
+    if (!config.dryRun && config.copyPcap) {
+        moloch_writer_exit();
+    }
+
+
+    if (config.pcapReadFiles)
+        g_strfreev(config.pcapReadFiles);
+    if (config.pcapReadDirs)
+        g_strfreev(config.pcapReadDirs);
+    if (config.extraTags)
+        g_strfreev(config.extraTags);
     exit(0);
 }
