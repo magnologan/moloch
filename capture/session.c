@@ -35,7 +35,7 @@ typedef HASHP_VAR(h_, MolochSessionHash_t, MolochSessionHead_t);
 
 LOCAL MolochSessionHead_t   sessionsQ[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
 LOCAL MolochSessionHash_t   sessions[MOLOCH_MAX_PACKET_THREADS][SESSION_MAX];
-LOCAL int needSave;
+LOCAL int needSave[MOLOCH_MAX_PACKET_THREADS];
 
 typedef struct molochsescmd {
     struct molochsescmd *cmd_next, *cmd_prev;
@@ -302,7 +302,7 @@ LOCAL void moloch_session_save(MolochSession_t *session)
 
     if (session->outstandingQueries > 0) {
         session->needSave = 1;
-        needSave++;
+        needSave[session->thread]++;
         return;
     }
 
@@ -359,7 +359,7 @@ gboolean moloch_session_decr_outstanding(MolochSession_t *session)
 {
     session->outstandingQueries--;
     if (session->needSave && session->outstandingQueries == 0) {
-        needSave--;
+        needSave[session->thread]--;
         session->needSave = 0; /* Stop endless loop if plugins add tags */
         moloch_db_save_session(session, TRUE);
         moloch_session_free(session);
@@ -391,7 +391,12 @@ int moloch_session_cmd_outstanding()
 /******************************************************************************/
 int moloch_session_need_save_outstanding()
 {
-    return needSave;
+    int count = 0;
+    int t;
+    for (t = 0; t < config.packetThreads; t++) {
+        count += needSave[t];
+    }
+    return count;
 }
 /******************************************************************************/
 MolochSession_t *moloch_session_find(int ses, char *sessionId)
