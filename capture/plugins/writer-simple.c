@@ -21,6 +21,7 @@
 #include "moloch.h"
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/mman.h>
 
 #ifndef O_NOATIME
 #define O_NOATIME 0
@@ -64,8 +65,10 @@ void writer_simple_write_buf(int thread, int closing)
 
     while (pos < total) {
         int len = write(info[thread].fd, info[thread].buf + pos, total-pos);
-        if (len > 0) {
+        if (len >= 0) {
             pos += len;
+        } else {
+            LOG("ERROR writing - %d %s", len, strerror(errno));
         }
     }
     if (closing) {
@@ -88,7 +91,7 @@ void writer_simple_exit()
             info[thread].fd = 0;
             g_free(info[thread].name);
         }
-        free(info[thread].buf);
+        munmap(info[thread].buf, config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1);
     }
 }
 /******************************************************************************/
@@ -168,7 +171,7 @@ void writer_simple_init(char *UNUSED(name))
 
     int thread;
     for (thread = 0; thread < config.packetThreads; thread++) {
-        info[thread].buf = malloc (config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1);
+        info[thread].buf = mmap (0, config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
     }
 
     if (config.pcapWriteSize % pageSize != 0) {

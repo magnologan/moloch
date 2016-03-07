@@ -102,7 +102,7 @@ void writer_disk_free_buf(MolochDiskOutput_t *out)
         MOLOCH_LOCK(freeOutputBufs);
 
     if (freeOutputBufs.i_count > (int)config.maxFreeOutputBuffers) {
-        munmap(out->buf, config.pcapWriteSize + 8192);
+        munmap(out->buf, config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1);
     } else {
         MolochInt_t *tmp = (MolochInt_t *)out->buf;
         DLL_PUSH_HEAD(i_, &freeOutputBufs, tmp);

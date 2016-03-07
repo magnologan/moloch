@@ -372,7 +372,7 @@ void writer_s3_flush(gboolean all)
         currentFile->doClose = TRUE;
         currentFile = NULL;
     } else {
-        outputBuffer = moloch_http_get_buffer(config.pcapWriteSize + 8192);
+        outputBuffer = moloch_http_get_buffer(config.pcapWriteSize + MOLOCH_SNAPLEN);
         outputPos = 0;
     }
 }
@@ -401,7 +401,7 @@ void writer_s3_create(const MolochPacket_t *packet)
     currentFile->outputPath = currentFile->outputFileName + offset;
     outputFilePos = 24;
 
-    outputBuffer = moloch_http_get_buffer(config.pcapWriteSize + 8192);
+    outputBuffer = moloch_http_get_buffer(config.pcapWriteSize + MOLOCH_SNAPLEN);
     outputPos = 24;
     memcpy(outputBuffer, &pcapFileHeader, 24);
 
