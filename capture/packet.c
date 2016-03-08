@@ -19,6 +19,8 @@
 #include <inttypes.h>
 #include <arpa/inet.h>
 
+//#define DEBUG_PACKET
+
 /******************************************************************************/
 extern MolochConfig_t        config;
 
@@ -83,6 +85,13 @@ void moloch_packet_tcp_finish(MolochSession_t *session)
     MolochTcpData_t            *next;
 
     MolochTcpDataHead_t * const tcpData = &session->tcpData;
+
+#ifdef DEBUG_PACKET
+    LOG("START");
+    DLL_FOREACH(td_, tcpData, ftd) {
+        LOG("dir: %d seq: %8u ack: %8u len: %4u", ftd->packet->direction, ftd->seq, ftd->ack, ftd->len);
+    }
+#endif
 
     DLL_FOREACH_REMOVABLE(td_, tcpData, ftd, next) {
         const int which = ftd->packet->direction;
@@ -168,6 +177,10 @@ int moloch_packet_process_tcp(MolochSession_t * const session, MolochPacket_t * 
 
 
     int            len = packet->payloadLen - 4*tcphdr->th_off;
+
+#ifdef DEBUG_PACKET
+    LOG("poffset: %d plen: %d len: %d", packet->payloadOffset, packet->payloadLen, len);
+#endif
 
     const uint32_t seq = ntohl(tcphdr->th_seq);
 
@@ -746,7 +759,7 @@ int moloch_packet_ip6(MolochPacket_t * const UNUSED(packet), const uint8_t *data
 
     packet->ipOffset = (uint8_t*)data - packet->pkt;
     packet->payloadOffset = packet->ipOffset + ip_hdr_len;
-    packet->payloadLen = ip_len - ip_hdr_len;
+    packet->payloadLen = ip_len;
     packet->v6 = 1;
 
 
