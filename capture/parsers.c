@@ -21,6 +21,8 @@
 #include "magic.h"
 #include "bsb.h"
 
+//#define DEBUG_PARSERS 1
+
 /******************************************************************************/
 extern MolochConfig_t        config;
 static gchar                 classTag[100];
@@ -329,7 +331,7 @@ void moloch_print_hex_string(unsigned char* data, unsigned int length)
     printf("\n");
 }
 /******************************************************************************/
-char *moloch_sprint_hex_string(char *buf, unsigned char* data, unsigned int length)
+char *moloch_sprint_hex_string(char *buf, const unsigned char* data, unsigned int length)
 {
     unsigned int i;
 
@@ -511,6 +513,11 @@ void moloch_parsers_classify_udp(MolochSession_t *session, const unsigned char *
 void moloch_parsers_classify_tcp(MolochSession_t *session, const unsigned char *data, int remaining, int which)
 {
     int i;
+
+#ifdef DEBUG_PARSERS
+    char buf[101];
+    LOG("len: %d direction: %d hex: %s data: %.*s", remaining, which, moloch_sprint_hex_string(buf, data, MIN(remaining, 50)), MIN(remaining, 50), data);
+#endif
 
     if (remaining < 2)
         return;

@@ -758,54 +758,75 @@ int moloch_packet_ip6(MolochPacket_t * const UNUSED(packet), const uint8_t *data
     int ip_hdr_len = sizeof(struct ip6_hdr);
 
     packet->ipOffset = (uint8_t*)data - packet->pkt;
-    packet->payloadOffset = packet->ipOffset + ip_hdr_len;
-    packet->payloadLen = ip_len;
     packet->v6 = 1;
 
 
-    switch (ip6->ip6_nxt) {
-    case IPPROTO_TCP:
-        if (len < ip_hdr_len + (int)sizeof(struct tcphdr)) {
+    int nxt = ip6->ip6_nxt;
+    int done = 0;
+    do {
+        switch (nxt) {
+        case IPPROTO_HOPOPTS:
+        case IPPROTO_DSTOPTS:
+        case IPPROTO_ROUTING:
+            nxt = data[ip_hdr_len];
+            ip_hdr_len += ((data[ip_hdr_len+1] + 1) << 3);
+            break;
+        case IPPROTO_FRAGMENT:
+            LOG("ERROR - Don't support ip6 fragements yet!");
             return 1;
-        }
+        case IPPROTO_TCP:
+            if (len < ip_hdr_len + (int)sizeof(struct tcphdr)) {
+                return 1;
+            }
 
-        tcphdr = (struct tcphdr *)((char*)ip6 + ip_hdr_len);
+            tcphdr = (struct tcphdr *)(data + ip_hdr_len);
 
-        moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, tcphdr->th_sport,
-                           ip6->ip6_dst.s6_addr, tcphdr->th_dport);
-        packet->ses = SESSION_TCP;
-        break;
-    case IPPROTO_UDP:
-        if (len < ip_hdr_len + (int)sizeof(struct udphdr)) {
-            return 1;
-        }
+            moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, tcphdr->th_sport,
+                               ip6->ip6_dst.s6_addr, tcphdr->th_dport);
+            packet->ses = SESSION_TCP;
+            done = 1;
+            break;
+        case IPPROTO_UDP:
+            if (len < ip_hdr_len + (int)sizeof(struct udphdr)) {
+                return 1;
+            }
 
-        udphdr = (struct udphdr *)((char*)ip6 + ip_hdr_len);
+            udphdr = (struct udphdr *)(data + ip_hdr_len);
 
-        moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, udphdr->uh_sport,
-                           ip6->ip6_dst.s6_addr, udphdr->uh_dport);
-                          
-        packet->ses = SESSION_UDP;
-        break;
-    case IPPROTO_ICMP:
-        moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, 0,
-                           ip6->ip6_dst.s6_addr, 0);
-        packet->ses = SESSION_ICMP;
-        break;
-    case IPPROTO_ICMPV6:
-        moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, 0,
-                           ip6->ip6_dst.s6_addr, 0);
-        packet->ses = SESSION_ICMP;
-        break;
+            moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, udphdr->uh_sport,
+                               ip6->ip6_dst.s6_addr, udphdr->uh_dport);
+
+            packet->ses = SESSION_UDP;
+            done = 1;
+            break;
+        case IPPROTO_ICMP:
+            moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, 0,
+                               ip6->ip6_dst.s6_addr, 0);
+            packet->ses = SESSION_ICMP;
+            done = 1;
+            break;
+        case IPPROTO_ICMPV6:
+            moloch_session_id6(sessionId, ip6->ip6_src.s6_addr, 0,
+                               ip6->ip6_dst.s6_addr, 0);
+            packet->ses = SESSION_ICMP;
+            done = 1;
+            break;
 #ifdef LATER
-    case IPPROTO_GRE:
-        return moloch_packet_gre4(packet, ip4, data + ip_hdr_len, len - ip_hdr_len);
+        case IPPROTO_GRE:
+            return moloch_packet_gre4(packet, ip4, data + ip_hdr_len, len - ip_hdr_len);
 #endif
-    default:
-        LOG("Unknown protocol %d", ip6->ip6_nxt);
-        return 1;
-    }
+        default:
+            LOG("Unknown protocol %d", ip6->ip6_nxt);
+            return 1;
+        }
+        if (ip_hdr_len > len) {
+            LOG ("ERROR - Corrupt packet ip_hdr_len = %d nxt = %d len = %d", ip_hdr_len, nxt, len);
+            return 1;
+        }
+    } while (!done);
 
+    packet->payloadOffset = packet->ipOffset + ip_hdr_len;
+    packet->payloadLen = ip_len - ip_hdr_len + sizeof(struct ip6_hdr);
     return moloch_packet_ip(packet, sessionId);
 }
 /******************************************************************************/

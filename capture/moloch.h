@@ -363,19 +363,19 @@ typedef struct {
 typedef struct molochpacket_t
 {
     struct molochpacket_t   *packet_next, *packet_prev;
-    struct timeval ts;      /* Timestamp */
-    uint8_t       *pkt;     /* Full Packet */
-    uint64_t       writerFilePos;
-    uint64_t       readerFilePos;
-    char          *readerName;
-    uint32_t       writerFileNum;
-    uint16_t       pktlen;  /* Length of this packet */
-    uint16_t       payloadLen;
-    uint8_t        payloadOffset;
-    uint8_t        ipOffset;
-    uint8_t        direction:1;
-    uint8_t        ses:3;
-    uint8_t        v6:1;
+    struct timeval ts;             // timestamp
+    uint8_t       *pkt;            // full packet
+    uint64_t       writerFilePos;  // where in output file
+    uint64_t       readerFilePos;  // where in input file
+    char          *readerName;     // file name reader used
+    uint32_t       writerFileNum;  // file number in db
+    uint16_t       pktlen;         // length of packet
+    uint16_t       payloadLen;     // length of ip payload
+    uint16_t       payloadOffset;  // offset to ip payload from start
+    uint8_t        ipOffset;       // offset to ip header from start
+    uint8_t        direction:1;    // direction of packet
+    uint8_t        ses:3;          // type of session
+    uint8_t        v6:1;           // v6 or not
 } MolochPacket_t;
 
 typedef struct
@@ -634,7 +634,7 @@ void  moloch_parsers_classifier_register_udp_internal(const char *name, int offs
 #define moloch_parsers_classifier_register_udp(name, offset, match, matchlen, func) moloch_parsers_classifier_register_udp_internal(name, offset, match, matchlen, func, sizeof(MolochSession_t), MOLOCH_API_VERSION)
 
 void  moloch_print_hex_string(unsigned char* data, unsigned int length);
-char *moloch_sprint_hex_string(char *buf, unsigned char* data, unsigned int length);
+char *moloch_sprint_hex_string(char *buf, const unsigned char* data, unsigned int length);
 
 /******************************************************************************/
 /*
