@@ -8,6 +8,8 @@ AC_CONFIG_FILES([
   Makefile
   capture/Makefile
   capture/plugins/Makefile
+  capture/plugins/daq/Makefile
+  capture/plugins/pfring/Makefile
   capture/parsers/Makefile
   db/Makefile
   tests/plugins/Makefile
