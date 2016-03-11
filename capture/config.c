@@ -324,7 +324,7 @@ void moloch_config_load()
     }
 
     config.elasticsearch    = moloch_config_str(keyfile, "elasticsearch", "localhost:9200");
-    config.interface        = moloch_config_str(keyfile, "interface", NULL);
+    config.interface        = moloch_config_str_list(keyfile, "interface", NULL);
     config.pcapDir          = moloch_config_str_list(keyfile, "pcapDir", NULL);
     config.bpf              = moloch_config_str(keyfile, "bpf", NULL);
     config.yara             = moloch_config_str(keyfile, "yara", NULL);
@@ -568,7 +568,11 @@ void moloch_config_init()
         LOG("nodeClass: %s", config.nodeClass);
         LOG("elasticsearch: %s", config.elasticsearch);
         LOG("prefix: %s", config.prefix);
-        LOG("interface: %s", config.interface);
+        if (config.interface) {
+            str = g_strjoinv(";", config.interface);
+            LOG("pcapDir: %s", str);
+            g_free(str);
+        }
         if (config.pcapDir) {
             str = g_strjoinv(";", config.pcapDir);
             LOG("pcapDir: %s", str);
@@ -676,7 +680,7 @@ void moloch_config_exit()
     if (config.nodeClass)
         g_free(config.nodeClass);
     if (config.interface)
-        g_free(config.interface);
+        g_strfreev(config.interface);
     if (config.elasticsearch)
         g_free(config.elasticsearch);
     if (config.bpf)

@@ -84,6 +84,18 @@ static void *reader_daq_thread()
     return NULL;
 }
 /******************************************************************************/
+int reader_daq_should_filter(const MolochPacket_t *UNUSED(packet))
+{
+    int i;
+    for (i = 0; i < config.dontSaveBPFsNum; i++) {
+        if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
+            return i;
+            break;
+        }
+    }
+    return -1;
+}
+/******************************************************************************/
 void reader_daq_start() {
     int err;
 
@@ -124,6 +136,7 @@ void reader_daq_start() {
                 exit(1);
             }
         }
+        moloch_reader_should_filter = reader_daq_should_filter;
     }
 
     g_thread_new("moloch-pcap", &reader_daq_thread, NULL);
@@ -133,20 +146,6 @@ void reader_daq_stop()
 {
     if (module)
         daq_breakloop(module, handle);
-}
-/******************************************************************************/
-int reader_daq_should_filter(const MolochPacket_t *UNUSED(packet))
-{
-    if (bpf_programs) {
-        int i;
-        for (i = 0; i < config.dontSaveBPFsNum; i++) {
-            if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
-                return i;
-                break;
-            }
-        }
-    }
-    return -1;
 }
 /******************************************************************************/
 void reader_daq_init(char *UNUSED(name))
@@ -188,7 +187,6 @@ void reader_daq_init(char *UNUSED(name))
     moloch_reader_start         = reader_daq_start;
     moloch_reader_stop          = reader_daq_stop;
     moloch_reader_stats         = reader_daq_stats;
-    moloch_reader_should_filter = reader_daq_should_filter;
 }
 /******************************************************************************/
 void moloch_plugin_init()

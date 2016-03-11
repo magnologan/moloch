@@ -276,7 +276,7 @@ typedef struct moloch_config {
     char     *prefix;
     char     *nodeClass;
     char     *elasticsearch;
-    char     *interface;
+    char    **interface;
     int       pcapDirPos;
     char    **pcapDir;
     char     *bpf;

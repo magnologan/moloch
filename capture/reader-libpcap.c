@@ -26,21 +26,28 @@ extern MolochPcapFileHdr_t   pcapFileHeader;
 
 extern MolochConfig_t        config;
 
-static pcap_t               *pcap;
+#define MAX_PCAPS 10
+static pcap_t               *pcaps[MAX_PCAPS];
 
 static struct bpf_program   *bpf_programs = 0;
 
 /******************************************************************************/
 int reader_libpcap_stats(MolochReaderStats_t *stats)
 {
-    struct pcap_stat ps;
-    if (unlikely(!pcap))
-        return -1;
-    int rc = pcap_stats (pcap, &ps);
-    if (unlikely(rc))
-        return rc;
-    stats->dropped = ps.ps_drop;
-    stats->total = ps.ps_recv;
+    stats->dropped = 0;
+    stats->total = 0;
+
+    int i;
+    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+        struct pcap_stat ps;
+        if (unlikely(!pcaps[i]))
+            continue;
+        int rc = pcap_stats (pcaps[i], &ps);
+        if (unlikely(rc))
+            continue;
+        stats->dropped += ps.ps_drop;
+        stats->total += ps.ps_recv;
+    }
     return 0;
 }
 /******************************************************************************/
@@ -53,15 +60,16 @@ void reader_libpcap_pcap_cb(u_char *UNUSED(user), const struct pcap_pkthdr *h, c
 
     MolochPacket_t *packet = MOLOCH_TYPE_ALLOC0(MolochPacket_t);
 
-    packet->pkt           = (u_char *)bytes,
-    packet->ts            = h->ts,
-    packet->pktlen        = h->len,
+    packet->pkt           = (u_char *)bytes;
+    packet->ts            = h->ts;
+    packet->pktlen        = h->len;
 
     moloch_packet(packet);
 }
 /******************************************************************************/
-static void *reader_libpcap_thread()
+static void *reader_libpcap_thread(gpointer pcapv)
 {
+    pcap_t *pcap = pcapv;
     LOG("THREAD %p", (gpointer)pthread_self());
 
     while (1) {
@@ -79,12 +87,26 @@ static void *reader_libpcap_thread()
     return NULL;
 }
 /******************************************************************************/
+int reader_libpcap_should_filter(const MolochPacket_t *packet)
+{
+    int i;
+    for (i = 0; i < config.dontSaveBPFsNum; i++) {
+        if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
+            return i;
+            break;
+        }
+    }
+    return -1;
+}
+/******************************************************************************/
 void reader_libpcap_start() {
     int dlt_to_linktype(int dlt);
 
-    pcapFileHeader.linktype = dlt_to_linktype(pcap_datalink(pcap)) | pcap_datalink_ext(pcap);
-    pcapFileHeader.snaplen = pcap_snapshot(pcap);
+    //ALW - Bug: assumes all linktypes are the same
+    pcapFileHeader.linktype = dlt_to_linktype(pcap_datalink(pcaps[0])) | pcap_datalink_ext(pcaps[0]);
+    pcapFileHeader.snaplen = pcap_snapshot(pcaps[0]);
 
+    pcap_t *dpcap = pcap_open_dead(pcapFileHeader.linktype, pcapFileHeader.snaplen);
     if (config.dontSaveBPFs) {
         int i;
         if (bpf_programs) {
@@ -95,34 +117,43 @@ void reader_libpcap_start() {
             bpf_programs= malloc(config.dontSaveBPFsNum*sizeof(struct bpf_program));
         }
         for (i = 0; i < config.dontSaveBPFsNum; i++) {
-            if (pcap_compile(pcap, &bpf_programs[i], config.dontSaveBPFs[i], 0, PCAP_NETMASK_UNKNOWN) == -1) {
-                LOG("ERROR - Couldn't compile filter: '%s' with %s", config.dontSaveBPFs[i], pcap_geterr(pcap));
+            if (pcap_compile(dpcap, &bpf_programs[i], config.dontSaveBPFs[i], 0, PCAP_NETMASK_UNKNOWN) == -1) {
+                LOG("ERROR - Couldn't compile filter: '%s' with %s", config.dontSaveBPFs[i], pcap_geterr(dpcap));
                 exit(1);
             }
         }
+        moloch_reader_should_filter = reader_libpcap_should_filter;
     }
 
-    if (config.bpf) {
-        struct bpf_program   bpf;
+    int i;
+    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+        if (config.bpf) {
+            struct bpf_program   bpf;
 
-        if (pcap_compile(pcap, &bpf, config.bpf, 1, PCAP_NETMASK_UNKNOWN) == -1) {
-            LOG("ERROR - Couldn't compile filter: '%s' with %s", config.bpf, pcap_geterr(pcap));
-            exit(1);
+            if (pcap_compile(pcaps[i], &bpf, config.bpf, 1, PCAP_NETMASK_UNKNOWN) == -1) {
+                LOG("ERROR - Couldn't compile filter: '%s' with %s", config.bpf, pcap_geterr(pcaps[i]));
+                exit(1);
+            }
+
+            if (pcap_setfilter(pcaps[i], &bpf) == -1) {
+                LOG("ERROR - Couldn't set filter: '%s' with %s", config.bpf, pcap_geterr(pcaps[i]));
+                exit(1);
+            }
         }
 
-	if (pcap_setfilter(pcap, &bpf) == -1) {
-            LOG("ERROR - Couldn't set filter: '%s' with %s", config.bpf, pcap_geterr(pcap));
-            exit(1);
-        }
+        char name[100];
+        snprintf(name, sizeof(name), "moloch-pcap%d", i);
+        g_thread_new(name, &reader_libpcap_thread, (gpointer)pcaps[i]);
     }
-
-    g_thread_new("moloch-pcap", &reader_libpcap_thread, NULL);
 }
 /******************************************************************************/
 void reader_libpcap_stop() 
 {
-    if (pcap)
-        pcap_breakloop(pcap);
+    int i;
+    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+        if (pcaps[i])
+            pcap_breakloop(pcaps[i]);
+    }
 }
 /******************************************************************************/
 pcap_t *
@@ -171,39 +202,34 @@ fail:
     return (NULL);
 }
 /******************************************************************************/
-int reader_libpcap_should_filter(const MolochPacket_t *packet)
-{
-    if (bpf_programs) {
-        int i;
-        for (i = 0; i < config.dontSaveBPFsNum; i++) {
-            if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
-                return i;
-                break;
-            }
-        }
-    }
-    return -1;
-}
-/******************************************************************************/
 void reader_libpcap_init(char *UNUSED(name))
 {
     char errbuf[1024];
 
+    int i;
+
+    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+
 #ifdef SNF
-    pcap = pcap_open_live(config.interface, MOLOCH_SNAPLEN, 1, 0, errbuf);
+        pcaps[i] = pcap_open_live(config.interface[0], MOLOCH_SNAPLEN, 1, 0, errbuf);
 #else
-    pcap = reader_libpcap_open_live(config.interface, MOLOCH_SNAPLEN, 1, 0, errbuf);
+        pcaps[i] = reader_libpcap_open_live(config.interface[0], MOLOCH_SNAPLEN, 1, 0, errbuf);
 #endif
 
-    if (!pcap) {
-        LOG("pcap open live failed! %s", errbuf);
-        exit(1);
+        if (!pcaps[i]) {
+            LOG("pcap open live failed! %s", errbuf);
+            exit(1);
+        }
+
+        pcap_setnonblock(pcaps[i], FALSE, errbuf);
     }
 
-    pcap_setnonblock(pcap, FALSE, errbuf);
+    if (i == MAX_PCAPS) {
+        LOG("Only support up to %d interfaces", MAX_PCAPS);
+        exit(1);
+    }
 
     moloch_reader_start         = reader_libpcap_start;
     moloch_reader_stop          = reader_libpcap_stop;
     moloch_reader_stats         = reader_libpcap_stats;
-    moloch_reader_should_filter = reader_libpcap_should_filter;
 }

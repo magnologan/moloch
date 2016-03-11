@@ -74,6 +74,18 @@ static void *reader_pfring_thread()
     return NULL;
 }
 /******************************************************************************/
+int reader_pfring_should_filter(const MolochPacket_t *UNUSED(packet))
+{
+    int i;
+    for (i = 0; i < config.dontSaveBPFsNum; i++) {
+        if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
+            return i;
+            break;
+        }
+    }
+    return -1;
+}
+/******************************************************************************/
 void reader_pfring_start() {
     int dlt_to_linktype(int dlt);
 
@@ -97,6 +109,7 @@ void reader_pfring_start() {
                 exit(1);
             }
         }
+        moloch_reader_should_filter = reader_pfring_should_filter;
     }
     pcap_close(pcap);
 
@@ -107,20 +120,6 @@ void reader_pfring_stop()
 {
     if (ring)
         pfring_breakloop(ring);
-}
-/******************************************************************************/
-int reader_pfring_should_filter(const MolochPacket_t *UNUSED(packet))
-{
-    if (bpf_programs) {
-        int i;
-        for (i = 0; i < config.dontSaveBPFsNum; i++) {
-            if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
-                return i;
-                break;
-            }
-        }
-    }
-    return -1;
 }
 /******************************************************************************/
 void reader_pfring_init(char *UNUSED(name))
@@ -153,7 +152,6 @@ void reader_pfring_init(char *UNUSED(name))
     moloch_reader_start         = reader_pfring_start;
     moloch_reader_stop          = reader_pfring_stop;
     moloch_reader_stats         = reader_pfring_stats;
-    moloch_reader_should_filter = reader_pfring_should_filter;
 }
 /******************************************************************************/
 void moloch_plugin_init()

@@ -377,6 +377,18 @@ gboolean reader_libpcapfile_read()
     return TRUE;
 }
 /******************************************************************************/
+int reader_libpcapfile_should_filter(const MolochPacket_t *packet)
+{
+    int i;
+    for (i = 0; i < config.dontSaveBPFsNum; i++) {
+        if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
+            return i;
+            break;
+        }
+    }
+    return -1;
+}
+/******************************************************************************/
 void reader_libpcapfile_opened()
 {
     int dlt_to_linktype(int dlt);
@@ -415,6 +427,7 @@ void reader_libpcapfile_opened()
                 exit(1);
             }
         }
+        moloch_reader_should_filter = reader_libpcapfile_should_filter;
     }
 
     if (config.flushBetween)
@@ -428,21 +441,6 @@ void reader_libpcapfile_opened()
     } else {
         moloch_watch_fd(fd, MOLOCH_GIO_READ_COND, reader_libpcapfile_read, NULL);
     }
-}
-
-/******************************************************************************/
-int reader_libpcapfile_should_filter(const MolochPacket_t *packet)
-{
-    if (bpf_programs) {
-        int i;
-        for (i = 0; i < config.dontSaveBPFsNum; i++) {
-            if (bpf_filter(bpf_programs[i].bf_insns, packet->pkt, packet->pktlen, packet->pktlen)) {
-                return i;
-                break;
-            }
-        }
-    }
-    return -1;
 }
 
 /******************************************************************************/
@@ -461,7 +459,6 @@ void reader_libpcapfile_init(char *UNUSED(name))
 {
     moloch_reader_start         = reader_libpcapfile_start;
     moloch_reader_stats         = reader_libpcapfile_stats;
-    moloch_reader_should_filter = reader_libpcapfile_should_filter;
 
     if (config.pcapMonitor)
         reader_libpcapfile_init_monitor();

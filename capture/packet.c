@@ -477,9 +477,11 @@ LOCAL void *moloch_packet_thread(void *threadp)
 
         /* Check if the stop saving bpf filters match */
         if (session->packets[packet->direction] == 0 && session->stopSaving == 0 && config.dontSaveBPFsNum) {
-            int i = moloch_reader_should_filter(packet);
-            if (i >= 0)
-                session->stopSaving = config.dontSaveBPFsStop[i];
+            if (moloch_reader_should_filter) {
+                int i = moloch_reader_should_filter(packet);
+                if (i >= 0)
+                    session->stopSaving = config.dontSaveBPFsStop[i];
+            }
         }
 
         session->packets[packet->direction]++;
