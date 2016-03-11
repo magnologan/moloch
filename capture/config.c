@@ -355,7 +355,6 @@ void moloch_config_load()
     config.tcpSaveTimeout        = moloch_config_int(keyfile, "tcpSaveTimeout", 60*8, 10, 60*120);
     config.maxStreams            = moloch_config_int(keyfile, "maxStreams", 1500000, 1, 16777215);
     config.maxPackets            = moloch_config_int(keyfile, "maxPackets", 10000, 1, 1000000);
-    config.minFreeSpaceG         = moloch_config_int(keyfile, "freeSpaceG", 100, 1, 100000);
     config.dbBulkSize            = moloch_config_int(keyfile, "dbBulkSize", 200000, MOLOCH_HTTP_BUFFER_SIZE*2, 1000000);
     config.dbFlushTimeout        = moloch_config_int(keyfile, "dbFlushTimeout", 5, 1, 60*30);
     config.maxESConns            = moloch_config_int(keyfile, "maxESConns", 20, 5, 1000);
@@ -627,7 +626,6 @@ void moloch_config_init()
         LOG("tcpSaveTimeout: %u", config.tcpSaveTimeout);
         LOG("maxStreams: %u", config.maxStreams);
         LOG("maxPackets: %u", config.maxPackets);
-        LOG("minFreeSpaceG: %u", config.minFreeSpaceG);
         LOG("dbBulkSize: %u", config.dbBulkSize);
         LOG("dbFlushTimeout: %u", config.dbFlushTimeout);
         LOG("maxESConns: %u", config.maxESConns);
