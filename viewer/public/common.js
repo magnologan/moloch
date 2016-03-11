@@ -243,6 +243,8 @@ function updateHealth(health)
   $("#esstatus").qtip({
     content:
       "Elasticsearch:<br>" +
+      " Version: " + health.version + "<br>" +
+      " Cluster: " + health.cluster_name + "<br>" +
       " Status: " + health.status + "<br>" +
       " Nodes: " + health.number_of_data_nodes + "<br>" +
       " Shards: " + health.active_shards + "<br>" +
