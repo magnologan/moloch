@@ -26,8 +26,8 @@ extern MolochPcapFileHdr_t   pcapFileHeader;
 
 extern MolochConfig_t        config;
 
-#define MAX_PCAPS 10
-static pcap_t               *pcaps[MAX_PCAPS];
+#define MAX_INTERFACES 10
+static pcap_t               *pcaps[MAX_INTERFACES];
 
 static struct bpf_program   *bpf_programs = 0;
 
@@ -38,7 +38,7 @@ int reader_libpcap_stats(MolochReaderStats_t *stats)
     stats->total = 0;
 
     int i;
-    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+    for (i = 0; i < MAX_INTERFACES && config.interface[i]; i++) {
         struct pcap_stat ps;
         if (unlikely(!pcaps[i]))
             continue;
@@ -126,7 +126,7 @@ void reader_libpcap_start() {
     }
 
     int i;
-    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+    for (i = 0; i < MAX_INTERFACES && config.interface[i]; i++) {
         if (config.bpf) {
             struct bpf_program   bpf;
 
@@ -150,7 +150,7 @@ void reader_libpcap_start() {
 void reader_libpcap_stop() 
 {
     int i;
-    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+    for (i = 0; i < MAX_INTERFACES && config.interface[i]; i++) {
         if (pcaps[i])
             pcap_breakloop(pcaps[i]);
     }
@@ -208,7 +208,7 @@ void reader_libpcap_init(char *UNUSED(name))
 
     int i;
 
-    for (i = 0; i < MAX_PCAPS && config.interface[i]; i++) {
+    for (i = 0; i < MAX_INTERFACES && config.interface[i]; i++) {
 
 #ifdef SNF
         pcaps[i] = pcap_open_live(config.interface[0], MOLOCH_SNAPLEN, 1, 0, errbuf);
@@ -224,8 +224,8 @@ void reader_libpcap_init(char *UNUSED(name))
         pcap_setnonblock(pcaps[i], FALSE, errbuf);
     }
 
-    if (i == MAX_PCAPS) {
-        LOG("Only support up to %d interfaces", MAX_PCAPS);
+    if (i == MAX_INTERFACES) {
+        LOG("Only support up to %d interfaces", MAX_INTERFACES);
         exit(1);
     }
 
