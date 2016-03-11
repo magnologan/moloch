@@ -29,7 +29,8 @@
 extern MolochConfig_t        config;
 extern MolochPcapFileHdr_t   pcapFileHeader;
 
-LOCAL pfring                *ring;
+#define MAX_INTERFACES 10
+LOCAL pfring                *rings[MAX_INTERFACES];
 LOCAL struct bpf_program    *bpf_programs = 0;
 
 /******************************************************************************/
@@ -37,9 +38,15 @@ int reader_pfring_stats(MolochReaderStats_t *stats)
 {
     pfring_stat pfstats;
 
-    pfring_stats(ring, &pfstats);
-    stats->dropped = pfstats.drop;
-    stats->total = pfstats.recv;
+    stats->dropped = 0;
+    stats->total = 0;
+
+    int i;
+    for (i = 0; i < MAX_INTERFACES && config.interface[i]; i++) {
+        pfring_stats(rings[i], &pfstats);
+        stats->dropped += pfstats.drop;
+        stats->total += pfstats.recv;
+    }
     return 0;
 }
 /******************************************************************************/
@@ -52,15 +59,17 @@ void reader_pfring_packet_cb(const struct pfring_pkthdr *h, const u_char *p, con
 
     MolochPacket_t *packet = MOLOCH_TYPE_ALLOC0(MolochPacket_t);
 
-    packet->pkt           = (u_char *)p,
-    packet->ts            = h->ts,
-    packet->pktlen        = h->len,
+    packet->pkt           = (u_char *)p;
+    packet->ts            = h->ts;
+    packet->pktlen        = h->len;
 
     moloch_packet(packet);
 }
 /******************************************************************************/
-static void *reader_pfring_thread()
+static void *reader_pfring_thread(void *ringv)
 {
+    pfring                *ring = ringv;
+
     while (1) {
         int r = pfring_loop(ring, reader_pfring_packet_cb, NULL, -1);
 
@@ -113,41 +122,53 @@ void reader_pfring_start() {
     }
     pcap_close(pcap);
 
-    g_thread_new("moloch-pcap", &reader_pfring_thread, NULL);
+    int i;
+    for (i = 0; i < config.dontSaveBPFsNum; i++) {
+        char name[100];
+        snprintf(name, sizeof(name), "moloch-pfring%d", i);
+        g_thread_new(name, &reader_pfring_thread, rings[i]);
+    }
 }
 /******************************************************************************/
 void reader_pfring_stop() 
 {
-    if (ring)
-        pfring_breakloop(ring);
+
+    int i;
+    for (i = 0; i < MAX_INTERFACES && config.interface[i]; i++) {
+        if (rings[i])
+            pfring_breakloop(rings[i]);
+    }
 }
 /******************************************************************************/
 void reader_pfring_init(char *UNUSED(name))
 {
     int flags = PF_RING_PROMISC | PF_RING_TIMESTAMP;
-
-    ring = pfring_open(config.interface, MOLOCH_SNAPLEN, flags);
-
-    if (config.bpf) {
-        int err = pfring_set_bpf_filter(ring, config.bpf);
-
-        if (err < 0) {
-            LOG("pfring set filter error %d  for  %s", err, config.bpf);
-            exit (1);
-        }
-    }
-
     int clusterId = moloch_config_int(NULL, "pfringClusterId", 0, 0, 255);
 
-    if (!ring) {
-        LOG("pfring open failed!");
-        exit(1);
-    }
+    int i;
+    for (i = 0; i < MAX_INTERFACES && config.interface[i]; i++) {
+        rings[i] = pfring_open(config.interface[i], MOLOCH_SNAPLEN, flags);
 
-    pfring_set_cluster(ring, clusterId, cluster_per_flow_5_tuple);
-    pfring_set_application_name(ring, "moloch-capture");
-    pfring_set_poll_watermark(ring, 64);
-    pfring_enable_rss_rehash(ring);
+        if (config.bpf) {
+            int err = pfring_set_bpf_filter(rings[i], config.bpf);
+
+            if (err < 0) {
+                LOG("pfring set filter error %d  for  %s", err, config.bpf);
+                exit (1);
+            }
+        }
+
+
+        if (!rings[i]) {
+            LOG("pfring open failed! - %s", config.interface[i]);
+            exit(1);
+        }
+
+        pfring_set_cluster(rings[i], clusterId, cluster_per_flow_5_tuple);
+        pfring_set_application_name(rings[i], "moloch-capture");
+        pfring_set_poll_watermark(rings[i], 64);
+        pfring_enable_rss_rehash(rings[i]);
+    }
 
     moloch_reader_start         = reader_pfring_start;
     moloch_reader_stop          = reader_pfring_stop;
