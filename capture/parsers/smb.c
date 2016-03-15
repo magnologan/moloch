@@ -124,7 +124,7 @@ void smb_security_blob(MolochSession_t *session, unsigned char *data, int len)
         BSB_IMPORT_skip(bsb, 2);
         BSB_LIMPORT_u32(bsb, offsets[i]);
 
-        if (offsets[i] > BSB_SIZE(bsb) || lens[i] > BSB_SIZE(bsb) || offsets[i] + lens[i] > BSB_SIZE(bsb)) {
+        if (BSB_IS_ERROR(bsb) || offsets[i] > BSB_SIZE(bsb) || lens[i] > BSB_SIZE(bsb) || offsets[i] + lens[i] > BSB_SIZE(bsb)) {
             moloch_session_add_tag(session, "smb:bad-security-blob");
             return;
         }
