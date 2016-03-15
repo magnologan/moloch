@@ -374,9 +374,12 @@ static gboolean moloch_http_curl_watch_open_callback(int fd, GIOCondition condit
     struct sockaddr_in localAddress, remoteAddress;
 
     socklen_t addressLength = sizeof(localAddress);
-    getsockname(fd, (struct sockaddr*)&localAddress, &addressLength);
+    int rc = getsockname(fd, (struct sockaddr*)&localAddress, &addressLength);
+    if (rc != 0)
+        return FALSE;
+
     addressLength = sizeof(remoteAddress);
-    int rc = getpeername(fd, (struct sockaddr*)&remoteAddress, &addressLength);
+    rc = getpeername(fd, (struct sockaddr*)&remoteAddress, &addressLength);
     if (rc != 0)
         return FALSE;
 
