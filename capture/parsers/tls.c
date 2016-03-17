@@ -31,6 +31,8 @@ typedef struct {
 
 extern unsigned char    moloch_char_to_hexstr[256][3];
 
+LOCAL GChecksum *checksums[MOLOCH_MAX_PACKET_THREADS];
+
 /******************************************************************************/
 void
 tls_certinfo_process(MolochCertInfo_t *ci, BSB *bsb)
@@ -255,7 +257,6 @@ uint64_t tls_parse_time(int tag, unsigned char* value, int len)
 /******************************************************************************/
 void tls_process_server_certificate(MolochSession_t *session, const unsigned char *data, int len)
 {
-    static __thread GChecksum *checksum = 0;
 
     BSB cbsb;
 
@@ -263,9 +264,7 @@ void tls_process_server_certificate(MolochSession_t *session, const unsigned cha
 
     BSB_IMPORT_skip(cbsb, 3); // Length again
 
-    if (!checksum) {
-        checksum = g_checksum_new(G_CHECKSUM_SHA1);
-    }
+    GChecksum * const checksum = checksums[session->thread];
 
     while(BSB_REMAINING(cbsb) > 3) {
         int            badreason = 0;
@@ -715,5 +714,10 @@ void moloch_parser_init()
         NULL);
 
     moloch_parsers_classifier_register_tcp("tls", 0, (unsigned char*)"\x16\x03", 2, tls_classify);
+
+    int t;
+    for (t = 0; t < config.packetThreads; t++) {
+        checksums[t] = g_checksum_new(G_CHECKSUM_SHA1);
+    }
 }
 
