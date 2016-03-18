@@ -585,15 +585,26 @@ void wise_plugin_pre_save(MolochSession_t *session, int UNUSED(final))
 /******************************************************************************/
 void wise_plugin_exit()
 {
+    MOLOCH_LOCK(item);
+    int h;
+    WiseItem_t *wi;
+    for (h = 0; h < 4; h++) {
+        while (DLL_POP_TAIL(wil_, &itemList[h], wi)) {
+            wise_free_item_unlocked(wi);
+        }
+    }
+
     moloch_http_free_server(wiseService);
+    MOLOCH_UNLOCK(item);
 }
 /******************************************************************************/
 uint32_t wise_plugin_outstanding()
 {
     int count;
     MOLOCH_LOCK(iRequest);
-    count = inflight + (iRequest?iRequest->numItems:0) + + moloch_http_queue_length(wiseService);
+    count = inflight + (iRequest?iRequest->numItems:0) + moloch_http_queue_length(wiseService);
     MOLOCH_UNLOCK(iRequest);
+    LOG("wise: %d", count);
     return count;
 }
 /******************************************************************************/
@@ -632,6 +643,7 @@ void moloch_plugin_init()
     tagsField      = moloch_field_by_db("ta");
 
     wiseService = moloch_http_create_server(host, port, maxConns, maxRequests, 0);
+    g_free(host);
 
     moloch_plugins_register("wise", FALSE);
 

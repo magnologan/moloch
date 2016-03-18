@@ -88,6 +88,7 @@ void moloch_db_free_local_ip(MolochIpInfo_t *ii)
         g_free(ii->asn);
     if (ii->rir)
         g_free(ii->rir);
+    MOLOCH_TYPE_FREE(MolochIpInfo_t, ii);
 }
 /******************************************************************************/
 MolochIpInfo_t *moloch_db_get_local_ip(MolochSession_t *session, struct in6_addr *ip)
@@ -280,20 +281,22 @@ void moloch_db_save_session(MolochSession_t *session, int final)
     MOLOCH_LOCK(sJson);
     if (prefix_time != session->lastPacket.tv_sec) {
         prefix_time = session->lastPacket.tv_sec;
-        struct tm *tmp = gmtime(&prefix_time);
+
+        struct tm tmp;
+        gmtime_r(&prefix_time, &tmp);
 
         switch(config.rotate) {
         case MOLOCH_ROTATE_HOURLY:
-            snprintf(prefix, sizeof(prefix), "%02d%02d%02dh%02d", tmp->tm_year%100, tmp->tm_mon+1, tmp->tm_mday, tmp->tm_hour);
+            snprintf(prefix, sizeof(prefix), "%02d%02d%02dh%02d", tmp.tm_year%100, tmp.tm_mon+1, tmp.tm_mday, tmp.tm_hour);
             break;
         case MOLOCH_ROTATE_DAILY:
-            snprintf(prefix, sizeof(prefix), "%02d%02d%02d", tmp->tm_year%100, tmp->tm_mon+1, tmp->tm_mday);
+            snprintf(prefix, sizeof(prefix), "%02d%02d%02d", tmp.tm_year%100, tmp.tm_mon+1, tmp.tm_mday);
             break;
         case MOLOCH_ROTATE_WEEKLY:
-            snprintf(prefix, sizeof(prefix), "%02dw%02d", tmp->tm_year%100, tmp->tm_yday/7);
+            snprintf(prefix, sizeof(prefix), "%02dw%02d", tmp.tm_year%100, tmp.tm_yday/7);
             break;
         case MOLOCH_ROTATE_MONTHLY:
-            snprintf(prefix, sizeof(prefix), "%02dm%02d", tmp->tm_year%100, tmp->tm_mon+1);
+            snprintf(prefix, sizeof(prefix), "%02dm%02d", tmp.tm_year%100, tmp.tm_mon+1);
             break;
         }
     }
@@ -1168,7 +1171,7 @@ uint64_t moloch_db_memory_size()
 }
 #endif
 /******************************************************************************/
-void moloch_db_update_stats()
+void moloch_db_update_stats(gboolean sync)
 {
     static uint64_t       lastPackets = 0;
     static uint64_t       lastBytes = 0;
@@ -1256,7 +1259,12 @@ void moloch_db_update_stats()
     lastDropped  = totalDropped;
     lastUsage    = usage;
 
-    moloch_http_set(esServer, stats_key, stats_key_len, json, json_len, NULL, NULL);
+    if (sync) {
+        moloch_http_send_sync(esServer, "POST", stats_key, stats_key_len, json, json_len, NULL, NULL);
+        moloch_http_free_buffer(json);
+    } else {
+        moloch_http_set(esServer, stats_key, stats_key_len, json, json_len, NULL, NULL);
+    }
 }
 
 /******************************************************************************/
@@ -1349,7 +1357,7 @@ void moloch_db_update_dstats(int n)
 gboolean moloch_db_update_stats_gfunc (gpointer user_data)
 {
     if (user_data == (gpointer)0)
-        moloch_db_update_stats();
+        moloch_db_update_stats(FALSE);
     else if (user_data == (gpointer)1)
         moloch_db_update_dstats(0);
     else if (user_data == (gpointer)2)
@@ -2177,7 +2185,7 @@ void moloch_db_exit()
         }
 
         moloch_db_flush_gfunc((gpointer)1);
-        moloch_db_update_stats();
+        moloch_db_update_stats(TRUE);
         moloch_http_free_server(esServer);
     }
 
@@ -2198,7 +2206,8 @@ void moloch_db_exit()
     }
 
     if (ipTree) {
-        Clear_Patricia(ipTree, moloch_db_free_local_ip);
+        Destroy_Patricia(ipTree, moloch_db_free_local_ip);
+        ipTree = 0;
     }
 
     MolochTag_t *tag;

@@ -316,6 +316,7 @@ int moloch_field_define(char *group, char *kind, char *expression, char *friendl
         g_free(minfo->expression);
         g_free(minfo->dbField);
         g_free(minfo->group);
+        g_free(minfo->kind);
         HASH_REMOVE(d_, fieldsByDb, minfo);
         HASH_REMOVE(e_, fieldsByExp, minfo);
         MOLOCH_TYPE_FREE(MolochFieldInfo_t, minfo);
@@ -422,6 +423,8 @@ void moloch_field_exit()
             g_free(info->group);
         if (info->kind)
             g_free(info->kind);
+        if (info->category)
+            g_free(info->category);
         MOLOCH_TYPE_FREE(MolochFieldInfo_t, info);
     );
 }

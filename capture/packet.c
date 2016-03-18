@@ -30,23 +30,24 @@ uint64_t                     totalPackets = 0;
 uint64_t                     totalBytes = 0;
 uint64_t                     totalSessions = 0;
 
-static uint32_t              initialDropped = 0;
+LOCAL uint32_t              initialDropped = 0;
 struct timeval               initialPacket;
 
 extern void                 *esServer;
 extern uint32_t              pluginsCbs;
 
-static int                   mac1Field;
-static int                   mac2Field;
-static int                   vlanField;
-static int                   greIpField;
+LOCAL int                   mac1Field;
+LOCAL int                   mac2Field;
+LOCAL int                   vlanField;
+LOCAL int                   greIpField;
 
 time_t                       lastPacketSecs[MOLOCH_MAX_PACKET_THREADS];
 
 /******************************************************************************/
 extern MolochSessionHead_t   tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
 
-static MolochPacketHead_t    packetQ[MOLOCH_MAX_PACKET_THREADS];
+LOCAL  MolochPacketHead_t    packetQ[MOLOCH_MAX_PACKET_THREADS];
+LOCAL  uint32_t              overloadDrops[MOLOCH_MAX_PACKET_THREADS];
 
 
 int moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int len);
@@ -449,6 +450,16 @@ LOCAL void *moloch_packet_thread(void *threadp)
         if (ip4->ip_v == 4) {
             dir = (MOLOCH_V6_TO_V4(session->addr1) == ip4->ip_src.s_addr &&
                    MOLOCH_V6_TO_V4(session->addr2) == ip4->ip_dst.s_addr);
+
+            uint16_t ip_off = ntohs(ip4->ip_off);
+            uint16_t ip_flags = ip_off & ~IP_OFFMASK;
+            ip_off &= IP_OFFMASK;
+            if (ip_flags & IP_MF) {
+                moloch_session_add_tag(session, "frag-flag");
+            }
+            if (ip_off > 0) {
+                moloch_session_add_tag(session, "frag-off");
+            }
         } else {
             dir = (memcmp(session->addr1.s6_addr, ip6->ip6_src.s6_addr, 16) == 0 &&
                    memcmp(session->addr2.s6_addr, ip6->ip6_dst.s6_addr, 16) == 0);
@@ -675,6 +686,14 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
     uint32_t thread = moloch_session_hash(sessionId) % config.packetThreads;
 
     MOLOCH_LOCK(packetQ[thread].lock);
+    if (DLL_COUNT(packet_, &packetQ[thread]) >= config.maxPacketsInQueue) {
+        overloadDrops[thread]++;
+        if ((overloadDrops[thread] % 1000) == 1) {
+            LOG("WARNING - Packet Q %d is overflowing, total dropped %u", thread, overloadDrops[thread]);
+        }
+        g_free(packet->pkt);
+        return 1;
+    }
     DLL_PUSH_TAIL(packet_, &packetQ[thread], packet);
     MOLOCH_UNLOCK(packetQ[thread].lock);
     MOLOCH_COND_BROADCAST(packetQ[thread].lock);

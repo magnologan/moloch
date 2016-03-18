@@ -306,6 +306,7 @@ typedef struct moloch_config {
     uint32_t  tcpSaveTimeout;
     uint32_t  maxStreams;
     uint32_t  maxPackets;
+    uint32_t  maxPacketsInQueue;
     uint32_t  dbBulkSize;
     uint32_t  dbFlushTimeout;
     uint32_t  maxESConns;
@@ -380,7 +381,7 @@ typedef struct molochpacket_t
 typedef struct
 {
     struct molochpacket_t   *packet_next, *packet_prev;
-    int                      packet_count;
+    uint32_t                 packet_count;
     MOLOCH_LOCK_EXTERN(lock);
     MOLOCH_COND_EXTERN(lock);
 } MolochPacketHead_t;
@@ -482,6 +483,8 @@ typedef struct moloch_session_head {
 } MolochSessionHead_t;
 
 
+//#define MOLOCH_USE_MALLOC
+
 #ifdef MOLOCH_USE_MALLOC
 #define MOLOCH_TYPE_ALLOC(type) (type *)(malloc(sizeof(type)))
 #define MOLOCH_TYPE_ALLOC0(type) (type *)(calloc(1, sizeof(type)))
@@ -537,8 +540,9 @@ typedef void (*MolochSeqNum_cb)(uint32_t seq, gpointer uw);
 #define LOG(...) do { \
     if(config.quiet == FALSE) { \
         time_t _t = time(NULL); \
+        char   _b[26]; \
         printf("%15.15s %s:%d %s(): ",\
-            ctime(&_t)+4, __FILE__,\
+            ctime_r(&_t, _b)+4, __FILE__,\
             __LINE__, __FUNCTION__); \
         printf(__VA_ARGS__); \
         printf("\n"); \

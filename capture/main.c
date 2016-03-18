@@ -74,6 +74,19 @@ static GOptionEntry entries[] =
 
 
 /******************************************************************************/
+void free_args()
+{
+    g_free(config.nodeName);
+    g_free(config.hostName);
+    g_free(config.configFile);
+    if (config.pcapReadFiles)
+        g_strfreev(config.pcapReadFiles);
+    if (config.pcapReadDirs)
+        g_strfreev(config.pcapReadDirs);
+    if (config.extraTags)
+        g_strfreev(config.extraTags);
+}
+/******************************************************************************/
 void parse_args(int argc, char **argv)
 {
     GError *error = NULL;
@@ -100,8 +113,8 @@ void parse_args(int argc, char **argv)
     }
 
     if (!config.nodeName) {
-        config.nodeName = malloc(101);
-        config.hostName = malloc(101);
+        config.nodeName = g_malloc(101);
+        config.hostName = g_malloc(101);
         gethostname(config.nodeName, 101);
         gethostname(config.hostName, 101);
         config.nodeName[100] = 0;
@@ -577,19 +590,16 @@ int main(int argc, char **argv)
     moloch_yara_exit();
     moloch_db_exit();
     moloch_http_exit();
-    moloch_config_exit();
     moloch_field_exit();
+    moloch_config_exit();
+
+    g_main_loop_unref(mainLoop);
 
     if (!config.dryRun && config.copyPcap) {
         moloch_writer_exit();
     }
 
 
-    if (config.pcapReadFiles)
-        g_strfreev(config.pcapReadFiles);
-    if (config.pcapReadDirs)
-        g_strfreev(config.pcapReadDirs);
-    if (config.extraTags)
-        g_strfreev(config.extraTags);
+    free_args();
     exit(0);
 }

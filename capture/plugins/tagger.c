@@ -306,6 +306,12 @@ void tagger_plugin_save(MolochSession_t *session, int UNUSED(final))
 }
 
 /******************************************************************************/
+void tagger_free_ip (TaggerIP_t *tip) 
+{
+    g_ptr_array_free(tip->infos, TRUE);
+    MOLOCH_TYPE_FREE(TaggerIP_t, tip);
+}
+/******************************************************************************/
 /*
  * Called by moloch when moloch is quiting
  */
@@ -345,6 +351,8 @@ void tagger_plugin_exit()
         g_strfreev(file->elements);
         MOLOCH_TYPE_FREE(TaggerFile_t, file);
     );
+
+    Destroy_Patricia(allIps, tagger_free_ip);
 }
 
 void tagger_remove_file(GPtrArray *infos, TaggerFile_t *file)
