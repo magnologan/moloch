@@ -692,6 +692,7 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
             LOG("WARNING - Packet Q %d is overflowing, total dropped %u", thread, overloadDrops[thread]);
         }
         g_free(packet->pkt);
+        MOLOCH_UNLOCK(packetQ[thread].lock);
         return 1;
     }
     DLL_PUSH_TAIL(packet_, &packetQ[thread], packet);
