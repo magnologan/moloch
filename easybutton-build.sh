@@ -13,7 +13,6 @@ GLIB=2.47.4
 YARA=1.7
 GEOIP=1.6.0
 PCAP=1.7.4
-NIDS=1.24
 PFRING=6.0.2
 CURL=7.42.1
 
@@ -171,26 +170,6 @@ else
     PCAPBUILD="--with-libpcap=$PCAPDIR"
 fi
 
-# libnids
-if [ ! -f "libnids-$NIDS.tar.gz" ]; then
-#  wget http://downloads.sourceforge.net/project/libnids/libnids/$NIDS/libnids-$NIDS.tar.gz
-  wget http://molo.ch/libnids-$NIDS.tar.gz
-fi
-
-if [ ! -f "libnids-$NIDS/src/libnids.a" ]; then
-  tar zxf libnids-$NIDS.tar.gz
-  if [ $(uname) == "FreeBSD" ]; then
-    ( cd libnids-$NIDS; cp ../yara-$YARA/config.sub . ; touch src/alloca.h )
-  fi
-  ( cd libnids-$NIDS; ./configure --enable-static --disable-libnet --with-libpcap=$PCAPDIR --disable-libglib; $MAKE)
-  if [ $? -ne 0 ]; then
-    echo "MOLOCH: $MAKE failed"
-    exit 1
-  fi
-else 
-  echo "MOLOCH: Not rebuilding libnids"
-fi
-
 # curl
 if [ ! -f "curl-$CURL.tar.gz" ]; then
   wget http://curl.haxx.se/download/curl-$CURL.tar.gz
@@ -211,8 +190,8 @@ fi
 # Now build moloch
 echo "MOLOCH: Building capture"
 cd ..
-echo "./configure --prefix=$TDIR $PCAPBUILD --with-libnids=thirdparty/libnids-$NIDS --with-yara=thirdparty/yara-$YARA --with-GeoIP=thirdparty/GeoIP-$GEOIP $WITHGLIB --with-curl=thirdparty/curl-$CURL"
-./configure --prefix=$TDIR $PCAPBUILD --with-libnids=thirdparty/libnids-$NIDS --with-yara=thirdparty/yara-$YARA --with-GeoIP=thirdparty/GeoIP-$GEOIP $WITHGLIB --with-curl=thirdparty/curl-$CURL
+echo "./configure --prefix=$TDIR $PCAPBUILD --with-yara=thirdparty/yara-$YARA --with-GeoIP=thirdparty/GeoIP-$GEOIP $WITHGLIB --with-curl=thirdparty/curl-$CURL"
+./configure --prefix=$TDIR $PCAPBUILD --with-yara=thirdparty/yara-$YARA --with-GeoIP=thirdparty/GeoIP-$GEOIP $WITHGLIB --with-curl=thirdparty/curl-$CURL
 
 $MAKE
 if [ $? -ne 0 ]; then

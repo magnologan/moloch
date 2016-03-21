@@ -150,8 +150,8 @@ Building Capture
 
    - OS X::
 
-        port install yara libpcap libnids openssl pcre flex bison zlib file gettext p5-JSON p5-libwww-perl libffi xz ossp-uuid libgeoip glib2
-        ./configure --with-libpcap=/opt/local --with-libnids=/opt/local --with-yara=/opt/local --with-GeoIP=/opt/local LDFLAGS=-L/opt/local/lib --with-glib2=no GLIB2_CFLAGS="-I/opt/local/include/glib-2.0 -I/opt/local/lib/glib-2.0/include" GLIB2_LIBS="-L/opt/local/lib -lglib-2.0 -lgmodule-2.0 -lgobject-2.0 -lgio-2.0"
+        port install yara libpcap openssl pcre flex bison zlib file gettext p5-JSON p5-libwww-perl libffi xz ossp-uuid libgeoip glib2
+        ./configure --with-libpcap=/opt/local --with-yara=/opt/local --with-GeoIP=/opt/local LDFLAGS=-L/opt/local/lib --with-glib2=no GLIB2_CFLAGS="-I/opt/local/include/glib-2.0 -I/opt/local/lib/glib-2.0/include" GLIB2_LIBS="-L/opt/local/lib -lglib-2.0 -lgmodule-2.0 -lgobject-2.0 -lgio-2.0"
 
 2. Building ``capture`` can be a pain because of OS versions.
 
@@ -180,13 +180,8 @@ Building Capture
      + `libpcap <http://www.tcpdump.org/#latest-release>`_ - version 1.3 or
        higher (most OS versions are older)::
        
-             wget http://www.tcpdump.org/release/libpcap-1.7.2.tar.gz
+             wget http://www.tcpdump.org/release/libpcap-1.7.4.tar.gz
              ./configure --disable-dbus
-
-     + `libnids <http://libnids.sourceforge.net/>`_ - version 1.24 or higher::
-
-             wget http://downloads.sourceforge.net/project/libnids/libnids/1.24/libnids-1.24.tar.gz
-             ./configure --disable-libnet --disable-glib2
 
 3. Run ``configure``. Optionally use the ``--with-<foo>`` directives to use
    static libraries from build directories.
