@@ -674,6 +674,7 @@ void moloch_packet_frags_free(MolochFrags_t * const frags)
 /******************************************************************************/
 void moloch_packet_frags_process(MolochPacket_t * const packet)
 {
+    MolochPacket_t * fpacket;
     MolochFrags_t   *frags;
     char             key[10];
 
@@ -711,7 +712,6 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
     }
 
     // Insert this packet in correct location sorted by offset
-    MolochPacket_t * fpacket;
     DLL_FOREACH_REVERSE(packet_, &frags->packets, fpacket) {
         struct ip *fip4 = (struct ip*)(fpacket->pkt + fpacket->ipOffset);
         uint16_t fip_off = ntohs(fip4->ip_off) & IP_OFFMASK;
@@ -733,23 +733,19 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
     struct ip *fip4;
     uint16_t fip_off;
 
+    int payloadLen = 0;
     DLL_FOREACH(packet_, &frags->packets, fpacket) {
         fip4 = (struct ip*)(fpacket->pkt + fpacket->ipOffset);
         fip_off = ntohs(fip4->ip_off) & IP_OFFMASK;
         if (fip_off != off)
             break;
         off += fpacket->payloadLen/8;
+        payloadLen = fip_off*8 + fpacket->payloadLen;
     }
     // We have a hole
     if ((void*)fpacket != (void*)&frags->packets) {
         return;
     }
-
-    // total payload is last packet offset plus last packet length, last packet doesn't have to be multiple of 8
-    fpacket = DLL_PEEK_TAIL(packet_, &frags->packets);
-    fip4 = (struct ip*)(fpacket->pkt + fpacket->ipOffset);
-    fip_off = ntohs(fip4->ip_off) & IP_OFFMASK;
-    int payloadLen = fip_off*8 + fpacket->payloadLen;
 
     // Now alloc the full packet
     packet->pktlen = packet->payloadOffset + payloadLen;
