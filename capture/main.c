@@ -39,6 +39,8 @@ unsigned char          moloch_hex_to_char[256][256];
 
 extern MolochWriterQueueLength moloch_writer_queue_length;
 
+MOLOCH_LOCK_DEFINE(LOG);
+
 /******************************************************************************/
 static gboolean showVersion    = FALSE;
 

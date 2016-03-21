@@ -366,6 +366,8 @@ void moloch_config_load()
     config.pcapBufferSize        = moloch_config_int(keyfile, "pcapBufferSize", 300000000, 100000, 0xffffffff);
     config.pcapWriteSize         = moloch_config_int(keyfile, "pcapWriteSize", 0x10000, 0x40000, 0x800000);
     config.maxFreeOutputBuffers  = moloch_config_int(keyfile, "maxFreeOutputBuffers", 50, 0, 0xffff);
+    config.fragsTimeout          = moloch_config_int(keyfile, "fragsTimeout", 60*8, 60, 0xffff);
+    config.maxFrags              = moloch_config_int(keyfile, "maxFrags", 10000, 100, 0xffffff);
 
     config.packetThreads         = moloch_config_int(keyfile, "packetThreads", 1, 1, MOLOCH_MAX_PACKET_THREADS);
 
@@ -638,6 +640,8 @@ void moloch_config_init()
         LOG("pcapBufferSize: %u", config.pcapBufferSize);
         LOG("pcapWriteSize: %u", config.pcapWriteSize);
         LOG("maxFreeOutputBuffers: %u", config.maxFreeOutputBuffers);
+        LOG("fragsTimeout: %u", config.fragsTimeout);
+        LOG("maxFrags: %u", config.maxFrags);
 
         LOG("packetThreads: %d", config.packetThreads);
 

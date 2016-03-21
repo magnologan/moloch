@@ -317,6 +317,8 @@ typedef struct moloch_config {
     uint32_t  pcapWriteSize;
     uint32_t  maxWriteBuffers;
     uint32_t  maxFreeOutputBuffers;
+    uint32_t  fragsTimeout;
+    uint32_t  maxFrags;
 
     int       packetThreads;
 
@@ -373,9 +375,11 @@ typedef struct molochpacket_t
     uint16_t       payloadLen;     // length of ip payload
     uint16_t       payloadOffset;  // offset to ip payload from start
     uint8_t        ipOffset;       // offset to ip header from start
+    uint8_t        protocol;       // ip protocol
     uint8_t        direction:1;    // direction of packet
     uint8_t        ses:3;          // type of session
     uint8_t        v6:1;           // v6 or not
+    uint8_t        copied:1;       // don't need to copy
 } MolochPacket_t;
 
 typedef struct
@@ -537,8 +541,10 @@ typedef void (*MolochTag_cb)(void *uw, int tagType, const char *tagName, uint32_
 typedef void (*MolochSeqNum_cb)(uint32_t seq, gpointer uw);
 
 /******************************************************************************/
+extern MOLOCH_LOCK_EXTERN(LOG);
 #define LOG(...) do { \
     if(config.quiet == FALSE) { \
+        MOLOCH_LOCK(LOG); \
         time_t _t = time(NULL); \
         char   _b[26]; \
         printf("%15.15s %s:%d %s(): ",\
@@ -547,6 +553,7 @@ typedef void (*MolochSeqNum_cb)(uint32_t seq, gpointer uw);
         printf(__VA_ARGS__); \
         printf("\n"); \
         fflush(stdout); \
+        MOLOCH_UNLOCK(LOG); \
     } \
 } while(0) /* no trailing ; */
 

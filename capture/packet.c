@@ -30,16 +30,16 @@ uint64_t                     totalPackets = 0;
 uint64_t                     totalBytes = 0;
 uint64_t                     totalSessions = 0;
 
-LOCAL uint32_t              initialDropped = 0;
+LOCAL uint32_t               initialDropped = 0;
 struct timeval               initialPacket;
 
 extern void                 *esServer;
 extern uint32_t              pluginsCbs;
 
-LOCAL int                   mac1Field;
-LOCAL int                   mac2Field;
-LOCAL int                   vlanField;
-LOCAL int                   greIpField;
+LOCAL int                    mac1Field;
+LOCAL int                    mac2Field;
+LOCAL int                    vlanField;
+LOCAL int                    greIpField;
 
 time_t                       lastPacketSecs[MOLOCH_MAX_PACKET_THREADS];
 
@@ -49,8 +49,34 @@ extern MolochSessionHead_t   tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
 LOCAL  MolochPacketHead_t    packetQ[MOLOCH_MAX_PACKET_THREADS];
 LOCAL  uint32_t              overloadDrops[MOLOCH_MAX_PACKET_THREADS];
 
+LOCAL  MolochPacketHead_t    fragsQ;
+
 
 int moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int len);
+
+typedef struct molochfrags_t {
+    struct molochfrags_t  *fragh_next, *fragh_prev;
+    struct molochfrags_t  *fragl_next, *fragl_prev;
+    uint32_t               fragh_bucket;
+    uint32_t               fragh_hash;
+    MolochPacketHead_t     packets;
+    char                   key[10];
+    uint32_t               secs;
+    char                   haveNoFlags;
+} MolochFrags_t;
+
+typedef struct {
+    struct molochfrags_t  *fragh_next, *fragh_prev;
+    struct molochfrags_t  *fragl_next, *fragl_prev;
+    short                  fragh_bucket;
+    uint32_t               fragh_count;
+    uint32_t               fragl_count;
+} MolochFragsHead_t;
+
+typedef HASH_VAR(h_, MolochFragsHash_t, MolochFragsHead_t, 199337);
+
+MolochFragsHash_t          fragsHash;
+MolochFragsHead_t          fragsList;
 
 /******************************************************************************/
 void moloch_packet_free(MolochPacket_t *packet)
@@ -172,7 +198,6 @@ int moloch_packet_process_tcp(MolochSession_t * const session, MolochPacket_t * 
 {
     if (session->stopSPI || session->stopTCP)
         return 1;
-
 
     struct tcphdr       *tcphdr = (struct tcphdr *)(packet->pkt + packet->payloadOffset);
 
@@ -347,9 +372,8 @@ LOCAL void *moloch_packet_thread(void *threadp)
         struct tcphdr       *tcphdr = 0;
         struct udphdr       *udphdr = 0;
         char                 sessionId[MOLOCH_SESSIONID_LEN];
-        const int            protocol = (packet->v6?ip6->ip6_nxt:ip4->ip_p);
 
-        switch (protocol) {
+        switch (packet->protocol) {
         case IPPROTO_TCP:
             tcphdr = (struct tcphdr *)(packet->pkt + packet->payloadOffset);
 
@@ -394,7 +418,7 @@ LOCAL void *moloch_packet_thread(void *threadp)
             session->saveTime = packet->ts.tv_sec + config.tcpSaveTimeout;
             session->firstPacket = packet->ts;
 
-            session->protocol = protocol;
+            session->protocol = packet->protocol;
             if (ip4->ip_v == 4) {
                 ((uint32_t *)session->addr1.s6_addr)[2] = htonl(0xffff);
                 ((uint32_t *)session->addr1.s6_addr)[3] = ip4->ip_src.s_addr;
@@ -450,16 +474,6 @@ LOCAL void *moloch_packet_thread(void *threadp)
         if (ip4->ip_v == 4) {
             dir = (MOLOCH_V6_TO_V4(session->addr1) == ip4->ip_src.s_addr &&
                    MOLOCH_V6_TO_V4(session->addr2) == ip4->ip_dst.s_addr);
-
-            uint16_t ip_off = ntohs(ip4->ip_off);
-            uint16_t ip_flags = ip_off & ~IP_OFFMASK;
-            ip_off &= IP_OFFMASK;
-            if (ip_flags & IP_MF) {
-                moloch_session_add_tag(session, "frag-flag");
-            }
-            if (ip_off > 0) {
-                moloch_session_add_tag(session, "frag-off");
-            }
         } else {
             dir = (memcmp(session->addr1.s6_addr, ip6->ip6_src.s6_addr, 16) == 0 &&
                    memcmp(session->addr2.s6_addr, ip6->ip6_dst.s6_addr, 16) == 0);
@@ -645,6 +659,175 @@ void moloch_packet_gre4(MolochPacket_t * const packet, const struct ip *ip4, con
 #endif
 
 /******************************************************************************/
+void moloch_packet_frags_free(MolochFrags_t * const frags)
+{
+    MolochPacket_t *packet;
+
+    while (DLL_POP_HEAD(packet_, &frags->packets, packet)) {
+        g_free(packet->pkt);
+        MOLOCH_TYPE_FREE(MolochPacket_t, packet);
+    }
+    HASH_REMOVE(fragh_, fragsHash, frags);
+    DLL_REMOVE(fragl_, &fragsList, frags);
+    MOLOCH_TYPE_FREE(MolochFrags_t, frags);
+}
+/******************************************************************************/
+LOCAL void moloch_packet_frags_process(MolochPacket_t * const packet)
+{
+    MolochFrags_t   *frags;
+    char             key[10];
+
+    struct ip * const ip4 = (struct ip*)(packet->pkt + packet->ipOffset);
+    uint16_t          ip_off = ntohs(ip4->ip_off);
+    uint16_t          ip_flags = ip_off & ~IP_OFFMASK;
+    ip_off &= IP_OFFMASK;
+
+    memcpy(key, &ip4->ip_src.s_addr, 4);
+    memcpy(key+4, &ip4->ip_dst.s_addr, 4);
+    memcpy(key+8, &ip4->ip_id, 2);
+
+    HASH_FIND(fragh_, fragsHash, key, frags);
+
+    if (!frags) {
+        frags = MOLOCH_TYPE_ALLOC0(MolochFrags_t);
+        memcpy(frags->key, key, 10);
+        frags->secs = packet->ts.tv_sec;
+        HASH_ADD(fragh_, fragsHash, key, frags);
+        DLL_PUSH_TAIL(fragl_, &fragsList, frags);
+        DLL_INIT(packet_, &frags->packets);
+        DLL_PUSH_TAIL(packet_, &frags->packets, packet);
+
+        if (DLL_COUNT(fragl_, &fragsList) > config.maxFrags) {
+            moloch_packet_frags_free(DLL_PEEK_HEAD(fragl_, &fragsList));
+        }
+        return;
+    } else {
+        DLL_MOVE_TAIL(fragl_, &fragsList, frags);
+    }
+
+    // we might be done once we receive the packets with no flags
+    if (ip_flags == 0) {
+        frags->haveNoFlags = 1;
+    }
+
+    // Insert this packet in correct location sorted by offset
+    MolochPacket_t * fpacket;
+    DLL_FOREACH_REVERSE(packet_, &frags->packets, fpacket) {
+        struct ip *fip4 = (struct ip*)(fpacket->pkt + fpacket->ipOffset);
+        uint16_t fip_off = ntohs(fip4->ip_off) & IP_OFFMASK;
+        if (ip_off >= fip_off) {
+            DLL_ADD_AFTER(packet_, &frags->packets, fpacket, packet);
+            break;
+        }
+    }
+    if ((void*)fpacket == (void*)&frags->packets) {
+        DLL_PUSH_HEAD(packet_, &frags->packets, packet);
+    }
+
+    // Don't bother checking until we get a packet with no flags
+    if (!frags->haveNoFlags) {
+        return;
+    }
+
+    int off = 0;
+    struct ip *fip4;
+    uint16_t fip_off;
+
+    DLL_FOREACH(packet_, &frags->packets, fpacket) {
+        fip4 = (struct ip*)(fpacket->pkt + fpacket->ipOffset);
+        fip_off = ntohs(fip4->ip_off) & IP_OFFMASK;
+        if (fip_off != off)
+            break;
+        off += fpacket->payloadLen/8;
+    }
+    // We have a hole
+    if ((void*)fpacket != (void*)&frags->packets) {
+        return;
+    }
+
+    // total payload is last packet offset plus last packet length, last packet doesn't have to be multiple of 8
+    fpacket = DLL_PEEK_TAIL(packet_, &frags->packets);
+    fip4 = (struct ip*)(fpacket->pkt + fpacket->ipOffset);
+    fip_off = ntohs(fip4->ip_off) & IP_OFFMASK;
+    int payloadLen = fip_off*8 + fpacket->payloadLen;
+
+    // Now alloc the full packet
+    packet->pktlen = packet->payloadOffset + payloadLen;
+    uint8_t *pkt = g_malloc(packet->pktlen);
+    memcpy(pkt, packet->pkt, packet->payloadOffset);
+
+    // Fix header of new packet
+    fip4 = (struct ip*)(pkt + packet->ipOffset);
+    fip4->ip_len = htons(payloadLen + 4*ip4->ip_hl);
+    fip4->ip_off = 0;
+
+    // Copy payload
+    DLL_FOREACH(packet_, &frags->packets, fpacket) {
+        struct ip *fip4 = (struct ip*)(fpacket->pkt + fpacket->ipOffset);
+        uint16_t fip_off = ntohs(fip4->ip_off) & IP_OFFMASK;
+
+        memcpy(pkt+packet->payloadOffset+(fip_off*8), fpacket->pkt+fpacket->payloadOffset, fpacket->payloadLen);
+    }
+
+    // Set all the vars in the current packet to new defraged packet
+    if (packet->copied)
+        g_free(packet->pkt);
+    packet->pkt = pkt;
+    packet->copied = 1;
+    packet->payloadLen = payloadLen;
+    DLL_REMOVE(packet_, &frags->packets, packet); // Remove from list so we don't get freed
+    moloch_packet_frags_free(frags);
+
+    moloch_packet(packet);
+}
+/******************************************************************************/
+LOCAL void *moloch_packet_frags_thread(void *UNUSED(unused))
+{
+    MolochPacket_t  *packet;
+    MolochFrags_t   *frags;
+
+
+    while (1) {
+        MOLOCH_LOCK(fragsQ.lock);
+        while (DLL_COUNT(packet_, &fragsQ) == 0) {
+            MOLOCH_COND_WAIT(fragsQ.lock);
+        }
+        DLL_POP_HEAD(packet_, &fragsQ, packet);
+        MOLOCH_UNLOCK(fragsQ.lock);
+
+
+        // Remove expired entries
+        while ((frags = DLL_PEEK_HEAD(fragl_, &fragsList)) && (frags->secs + config.fragsTimeout < packet->ts.tv_sec)) {
+            moloch_packet_frags_free(frags);
+        }
+
+        moloch_packet_frags_process(packet);
+    }
+}
+/******************************************************************************/
+void moloch_packet_frags4(MolochPacket_t * const packet)
+{
+    packet->pkt = g_memdup(packet->pkt, packet->pktlen);
+    packet->copied = 1;
+
+    // When running tests we do on the same thread so results are more determinstic
+    if (config.tests) {
+        moloch_packet_frags_process(packet);
+        return;
+    }
+
+
+    MOLOCH_LOCK(fragsQ.lock);
+    DLL_PUSH_TAIL(packet_, &fragsQ, packet);
+    MOLOCH_UNLOCK(fragsQ.lock);
+    MOLOCH_COND_BROADCAST(fragsQ.lock);
+}
+/******************************************************************************/
+int moloch_packet_frags_outstanding()
+{
+    return DLL_COUNT(packet_, &fragsQ);
+}
+/******************************************************************************/
 int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId)
 {
     totalBytes += packet->pktlen;
@@ -682,7 +865,10 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
           );
     }
 
-    packet->pkt = g_memdup(packet->pkt, packet->pktlen);
+    if (!packet->copied) {
+        packet->pkt = g_memdup(packet->pkt, packet->pktlen);
+        packet->copied = 1;
+    }
     uint32_t thread = moloch_session_hash(sessionId) % config.packetThreads;
 
     MOLOCH_LOCK(packetQ[thread].lock);
@@ -723,6 +909,15 @@ int moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int le
     packet->payloadOffset = packet->ipOffset + ip_hdr_len;
     packet->payloadLen = ip_len - ip_hdr_len;
 
+    uint16_t ip_off = ntohs(ip4->ip_off);
+    uint16_t ip_flags = ip_off & ~IP_OFFMASK;
+    ip_off &= IP_OFFMASK;
+
+    if ((ip_flags & IP_MF) || ip_off > 0) {
+        moloch_packet_frags4(packet);
+        return 0;
+    }
+
     switch (ip4->ip_p) {
     case IPPROTO_TCP:
         if (len < ip_hdr_len + (int)sizeof(struct tcphdr)) {
@@ -759,6 +954,7 @@ int moloch_packet_ip4(MolochPacket_t * const packet, const uint8_t *data, int le
             LOG("Unknown protocol %d", ip4->ip_p);
         return 1;
     }
+    packet->protocol = ip4->ip_p;
 
     return moloch_packet_ip(packet, sessionId);
 }
@@ -770,12 +966,14 @@ int moloch_packet_ip6(MolochPacket_t * const UNUSED(packet), const uint8_t *data
     struct udphdr       *udphdr = 0;
     char                 sessionId[MOLOCH_SESSIONID_LEN];
 
-    if (len < (int)sizeof(struct ip6_hdr))
+    if (len < (int)sizeof(struct ip6_hdr)) {
         return 1;
+    }
 
     int ip_len = ntohs(ip6->ip6_plen);
-    if (len < ip_len)
+    if (len < ip_len) {
         return 1;
+    }
 
     int ip_hdr_len = sizeof(struct ip6_hdr);
 
@@ -847,6 +1045,7 @@ int moloch_packet_ip6(MolochPacket_t * const UNUSED(packet), const uint8_t *data
         }
     } while (!done);
 
+    packet->protocol = nxt;
     packet->payloadOffset = packet->ipOffset + ip_hdr_len;
     packet->payloadLen = ip_len - ip_hdr_len + sizeof(struct ip6_hdr);
     return moloch_packet_ip(packet, sessionId);
@@ -915,6 +1114,23 @@ int moloch_packet_outstanding()
     return count;
 }
 /******************************************************************************/
+uint32_t moloch_packet_frag_hash(const void *key)
+{
+    int i;
+    uint32_t n = 0;
+    for (i = 0; i < 10; i++) {
+        n = (n << 5) - n + ((char*)key)[i];
+    }
+    return n;
+}
+/******************************************************************************/
+int moloch_packet_frag_cmp(const void *keyv, const void *elementv)
+{
+    MolochFrags_t *element = (MolochFrags_t *)elementv;
+
+    return memcmp(keyv, element->key, 10) == 0;
+}
+/******************************************************************************/
 void moloch_packet_init()
 {
     pcapFileHeader.magic = 0xa1b2c3d4;
@@ -981,7 +1197,16 @@ void moloch_packet_init()
         MOLOCH_COND_INIT(packetQ[t].lock);
     }
 
+    g_thread_new("moloch-frags4", &moloch_packet_frags_thread, NULL);
+    DLL_INIT(packet_, &fragsQ);
+    MOLOCH_LOCK_INIT(fragsQ.lock);
+    MOLOCH_COND_INIT(fragsQ.lock);
+
+    HASH_INIT(fragh_, fragsHash, moloch_packet_frag_hash, moloch_packet_frag_cmp);
+    DLL_INIT(fragl_, &fragsList);
+
     moloch_add_can_quit(moloch_packet_outstanding);
+    moloch_add_can_quit(moloch_packet_frags_outstanding);
 }
 /******************************************************************************/
 uint32_t moloch_packet_dropped_packets()
