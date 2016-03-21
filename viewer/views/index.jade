@@ -298,7 +298,7 @@ block content
               if (rowData['tipv62-term']) {
                 result = "<span molochexpr='tipv6.dst' class='moloch-right-click ip6Column'> " + ip6String(rowData['tipv62-term']) + "</span>";
               } else {
-                result = "<span molochexpr='ip.src' class='moloch-right-click'> " + ipString(rowData.a2) + "</span>";
+                result = "<span molochexpr='ip.dst' class='moloch-right-click'> " + ipString(rowData.a2) + "</span>";
               }
               if (rowData.g2) {
                 result += "<br><span molochexpr='country.dst' class='moloch-right-click'>" + rowData.g2 + "</span>";
