@@ -1221,6 +1221,8 @@ void moloch_db_update_stats(gboolean sync)
         "\"diskQueue\": %u, "
         "\"esQueue\": %u, "
         "\"packetQueue\": %u, "
+        "\"fragsQueue\": %u, "
+        "\"frags\": %u, "
         "\"needSave\": %u, "
         "\"totalPackets\": %" PRIu64 ", "
         "\"totalK\": %" PRIu64 ", "
@@ -1241,6 +1243,8 @@ void moloch_db_update_stats(gboolean sync)
         moloch_writer_queue_length?moloch_writer_queue_length():0,
         moloch_http_queue_length(esServer),
         moloch_packet_outstanding(),
+        moloch_packet_frags_outstanding(),
+        moloch_packet_frags_size(),
         moloch_session_need_save_outstanding(),
         dbTotalPackets,
         dbTotalK,
@@ -1321,6 +1325,8 @@ void moloch_db_update_dstats(int n)
         "\"diskQueue\": %u, "
         "\"esQueue\": %u, "
         "\"packetQueue\": %u, "
+        "\"fragsQueue\": %u, "
+        "\"frags\": %u, "
         "\"needSave\": %u, "
         "\"deltaPackets\": %" PRIu64 ", "
         "\"deltaBytes\": %" PRIu64 ", "
@@ -1338,6 +1344,8 @@ void moloch_db_update_dstats(int n)
         moloch_writer_queue_length?moloch_writer_queue_length():0,
         moloch_http_queue_length(esServer),
         moloch_packet_outstanding(),
+        moloch_packet_frags_outstanding(),
+        moloch_packet_frags_size(),
         moloch_session_need_save_outstanding(),
         (totalPackets - lastPackets[n]),
         (totalBytes - lastBytes[n]),

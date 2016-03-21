@@ -32,7 +32,7 @@ static MolochStringHashStd_t writersHash;
 void moloch_writers_start(char *name) {
     MolochString_t *str;
     if (!name)
-        name = moloch_config_str(NULL, "pcapWriteMethod", "thread-direct");
+        name = moloch_config_str(NULL, "pcapWriteMethod", "simple");
 
 
     HASH_FIND(s_, writersHash, name, str);
@@ -52,6 +52,7 @@ void moloch_writers_add(char *name, MolochWriterInit func) {
 void writer_disk_init(char*);
 void writer_null_init(char*);
 void writer_inplace_init(char*);
+void writer_simple_init(char*);
 
 void moloch_writers_init()
 {
@@ -62,4 +63,5 @@ void moloch_writers_init()
     moloch_writers_add("direct", writer_disk_init);
     moloch_writers_add("thread", writer_disk_init);
     moloch_writers_add("thread-direct", writer_disk_init);
+    moloch_writers_add("simple", writer_simple_init);
 }

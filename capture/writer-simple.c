@@ -168,19 +168,14 @@ void writer_simple_init(char *UNUSED(name))
     moloch_writer_write        = writer_simple_write;
 
     pageSize = getpagesize();
+    if (config.pcapWriteSize % pageSize != 0) {
+        config.pcapWriteSize = ((config.pcapWriteSize + pageSize - 1) / pageSize) * pageSize;
+        LOG ("INFO: Reseting pcapWriteSize to %u since it must be a multiple of %u", config.pcapWriteSize, pageSize);
+    }
 
     int thread;
     for (thread = 0; thread < config.packetThreads; thread++) {
         info[thread].buf = mmap (0, config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
     }
 
-    if (config.pcapWriteSize % pageSize != 0) {
-        printf("pcapWriteMethod must be a multiple of %d", pageSize);
-        exit (1);
-    }
-}
-/******************************************************************************/
-void moloch_plugin_init()
-{
-    moloch_writers_add("simple", writer_simple_init);
 }

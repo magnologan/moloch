@@ -819,6 +819,11 @@ void moloch_packet_frags4(MolochPacket_t * const packet)
     MOLOCH_COND_BROADCAST(fragsQ.lock);
 }
 /******************************************************************************/
+int moloch_packet_frags_size()
+{
+    return DLL_COUNT(fragl_, &fragsList);
+}
+/******************************************************************************/
 int moloch_packet_frags_outstanding()
 {
     return DLL_COUNT(packet_, &fragsQ);
@@ -845,7 +850,7 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
             stats.total = totalPackets;
         }
 
-        LOG("packets: %" PRIu64 " current sessions: %u/%u oldest: %d - recv: %" PRIu64 " drop: %" PRIu64 " (%0.2f) queue: %d disk: %d packet: %d close: %d ns: %d",
+        LOG("packets: %" PRIu64 " current sessions: %u/%u oldest: %d - recv: %" PRIu64 " drop: %" PRIu64 " (%0.2f) queue: %d disk: %d packet: %d close: %d ns: %d frags: %d/%d",
           totalPackets,
           moloch_session_watch_count(packet->ses),
           moloch_session_monitoring(),
@@ -857,7 +862,9 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
           moloch_writer_queue_length(),
           moloch_packet_outstanding(),
           moloch_session_close_outstanding(),
-          moloch_session_need_save_outstanding()
+          moloch_session_need_save_outstanding(),
+          moloch_packet_frags_outstanding(),
+          moloch_packet_frags_size()
           );
     }
 
