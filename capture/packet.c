@@ -672,7 +672,7 @@ void moloch_packet_frags_free(MolochFrags_t * const frags)
     MOLOCH_TYPE_FREE(MolochFrags_t, frags);
 }
 /******************************************************************************/
-LOCAL void moloch_packet_frags_process(MolochPacket_t * const packet)
+void moloch_packet_frags_process(MolochPacket_t * const packet)
 {
     MolochFrags_t   *frags;
     char             key[10];
