@@ -1574,12 +1574,13 @@ app.get('/dstats.json', function(req, res) {
           mergeUnarray(fields, result.hits.hits[i].fields);
         }
         var pos = Math.floor((fields.currentTime - req.query.start)/req.query.step);
-        fields.deltaBits           = Math.floor(fields.deltaBytes * 8.0);
-        fields.deltaBytesPerSec    = Math.floor(fields.deltaBytes * 1000.0/fields.deltaMS);
-        fields.deltaBitsPerSec     = Math.floor(fields.deltaBytes * 1000.0/fields.deltaMS * 8);
-        fields.deltaPacketsPerSec  = Math.floor(fields.deltaPackets * 1000.0/fields.deltaMS);
-        fields.deltaSessionsPerSec = Math.floor(fields.deltaSessions * 1000.0/fields.deltaMS);
-        fields.deltaDroppedPerSec  = Math.floor(fields.deltaDropped * 1000.0/fields.deltaMS);
+        fields.deltaBits               = Math.floor(fields.deltaBytes * 8.0);
+        fields.deltaBytesPerSec        = Math.floor(fields.deltaBytes * 1000.0/fields.deltaMS);
+        fields.deltaBitsPerSec         = Math.floor(fields.deltaBytes * 1000.0/fields.deltaMS * 8);
+        fields.deltaPacketsPerSec      = Math.floor(fields.deltaPackets * 1000.0/fields.deltaMS);
+        fields.deltaSessionsPerSec     = Math.floor(fields.deltaSessions * 1000.0/fields.deltaMS);
+        fields.deltaDroppedPerSec      = Math.floor(fields.deltaDropped * 1000.0/fields.deltaMS);
+        fields.deltaFragsDroppedPerSec = Math.floor(fields.deltaFragsDropped * 1000.0/fields.deltaMS);
         data[pos] = mult * (fields[req.query.name] || 0);
       }
     }

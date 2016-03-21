@@ -741,12 +741,13 @@ void moloch_session_add_cmd(MolochSession_t *session, MolochSesCmd cmd, gpointer
  */
 
 void     moloch_packet_init();
-uint32_t moloch_packet_dropped_packets();
+uint64_t moloch_packet_dropped_packets();
 void     moloch_packet_exit();
 void     moloch_packet_tcp_free(MolochSession_t *session);
 int      moloch_packet_outstanding();
 int      moloch_packet_frags_outstanding();
 int      moloch_packet_frags_size();
+uint64_t moloch_packet_dropped_frags();
 void     moloch_packet_thread_wake(int thread);
 void     moloch_packet_flush();
 void     moloch_packet(MolochPacket_t * const packet);

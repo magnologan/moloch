@@ -41,6 +41,8 @@ LOCAL int                    mac2Field;
 LOCAL int                    vlanField;
 LOCAL int                    greIpField;
 
+LOCAL uint64_t               droppedFrags;
+
 time_t                       lastPacketSecs[MOLOCH_MAX_PACKET_THREADS];
 
 /******************************************************************************/
@@ -679,10 +681,6 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
     char             key[10];
 
     struct ip * const ip4 = (struct ip*)(packet->pkt + packet->ipOffset);
-    uint16_t          ip_off = ntohs(ip4->ip_off);
-    uint16_t          ip_flags = ip_off & ~IP_OFFMASK;
-    ip_off &= IP_OFFMASK;
-
     memcpy(key, &ip4->ip_src.s_addr, 4);
     memcpy(key+4, &ip4->ip_dst.s_addr, 4);
     memcpy(key+8, &ip4->ip_id, 2);
@@ -699,12 +697,17 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
         DLL_PUSH_TAIL(packet_, &frags->packets, packet);
 
         if (DLL_COUNT(fragl_, &fragsList) > config.maxFrags) {
+            droppedFrags++;
             moloch_packet_frags_free(DLL_PEEK_HEAD(fragl_, &fragsList));
         }
         return;
     } else {
         DLL_MOVE_TAIL(fragl_, &fragsList, frags);
     }
+
+    uint16_t          ip_off = ntohs(ip4->ip_off);
+    uint16_t          ip_flags = ip_off & ~IP_OFFMASK;
+    ip_off &= IP_OFFMASK;
 
     // we might be done once we receive the packets with no flags
     if (ip_flags == 0) {
@@ -794,6 +797,7 @@ LOCAL void *moloch_packet_frags_thread(void *UNUSED(unused))
 
         // Remove expired entries
         while ((frags = DLL_PEEK_HEAD(fragl_, &fragsList)) && (frags->secs + config.fragsTimeout < packet->ts.tv_sec)) {
+            droppedFrags++;
             moloch_packet_frags_free(frags);
         }
 
@@ -1212,13 +1216,18 @@ void moloch_packet_init()
     moloch_add_can_quit(moloch_packet_frags_outstanding);
 }
 /******************************************************************************/
-uint32_t moloch_packet_dropped_packets()
+uint64_t moloch_packet_dropped_packets()
 {
     MolochReaderStats_t stats;
     if (moloch_reader_stats(&stats)) {
         return 0;
     }
     return stats.dropped - initialDropped;
+}
+/******************************************************************************/
+uint64_t moloch_packet_dropped_frags()
+{
+    return droppedFrags;
 }
 /******************************************************************************/
 void moloch_packet_exit()

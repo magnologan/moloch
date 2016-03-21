@@ -367,7 +367,7 @@ void moloch_config_load()
     config.pcapWriteSize         = moloch_config_int(keyfile, "pcapWriteSize", 0x10000, 0x40000, 0x800000);
     config.maxFreeOutputBuffers  = moloch_config_int(keyfile, "maxFreeOutputBuffers", 50, 0, 0xffff);
     config.fragsTimeout          = moloch_config_int(keyfile, "fragsTimeout", 60*8, 60, 0xffff);
-    config.maxFrags              = moloch_config_int(keyfile, "maxFrags", 10000, 100, 0xffffff);
+    config.maxFrags              = moloch_config_int(keyfile, "maxFrags", 50000, 1000, 0xffffff);
 
     config.packetThreads         = moloch_config_int(keyfile, "packetThreads", 1, 1, MOLOCH_MAX_PACKET_THREADS);
 
