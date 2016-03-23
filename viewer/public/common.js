@@ -1666,6 +1666,82 @@ function setupMap(mapId) {
   );
 }
 
+//////////////////////////////////////////////////////////////////////////////////
+// Table State Functions
+//////////////////////////////////////////////////////////////////////////////////
+function saveTableState(e) {
+  if ($(e.target).data("molochts_loaded") === undefined) {
+    return;
+  }
+
+  var table = $(e.target).DataTable();
+  var state = {
+    visibleHeaders: $("#"+ e.target.id + " thead tr th").map(function() {return $(this).text()}).toArray(),
+    order: []
+  };
+  var order = table.order();
+  for (var i = 0; i < order.length; i++) {
+    state.order[i] = [
+      $(table.column(order[i][0]).header()).text(),
+      order[i][1]
+    ];
+  }
+  var json = JSON.stringify(state);
+  if ($(e.target).data("molochts") !== json) {
+    $(e.target).data("molochts", json);
+    $.ajax( {
+      "dataType": 'json',
+      "type": "POST",
+      "data": state,
+      "url": "tableState/" + e.target.id,
+      "success": function(data) {
+      }
+    });
+  }
+}
+
+function loadTableState(table, defaultHeaders) {
+  var name = table.settings()[0].sInstance;
+
+  $.ajax( {
+    "dataType": 'json',
+    "type": "GET",
+    "url": "tableState/" + name,
+    "success": function(state) {
+      if (!state.visibleHeaders) {
+        if (!defaultHeaders) {
+          $("#"+name).data("molochts_loaded", 1);
+          table.settings().
+          return;
+        }
+        state.visibleHeaders = defaultHeaders;
+      }
+      var headerNames = table.columns().header().to$().map(function() {return $(this).text()}).toArray();
+
+      for (var i = 0; i < headerNames.length; i++) {
+        table.column(i).visible(state.visibleHeaders.indexOf(headerNames[i]) !== -1);
+      }
+
+      var colorder = [];
+      var extra = state.visibleHeaders.length;
+      var possible = d3.range(headerNames.length);
+
+
+      for (var i = 0; i < state.visibleHeaders.length; i++) {
+        var pos = headerNames.indexOf(state.visibleHeaders[i]);
+        if (pos !== -1) {
+          colorder.push(pos);
+          possible.splice(possible.indexOf(pos), 1);
+        }
+      }
+      colorder = colorder.concat(possible);
+      table.colReorder.order(colorder);
+
+      $("#"+name).data("molochts_loaded", 1);
+    }
+  });
+}
+
 /*
 * jQuery.ajaxQueue - A queue for ajax requests
 *

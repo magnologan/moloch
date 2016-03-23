@@ -748,6 +748,7 @@ int      moloch_packet_outstanding();
 int      moloch_packet_frags_outstanding();
 int      moloch_packet_frags_size();
 uint64_t moloch_packet_dropped_frags();
+uint64_t moloch_packet_dropped_overload();
 void     moloch_packet_thread_wake(int thread);
 void     moloch_packet_flush();
 void     moloch_packet(MolochPacket_t * const packet);

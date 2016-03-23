@@ -1189,6 +1189,7 @@ void moloch_db_update_stats(gboolean sync)
     static uint64_t       lastSessions = 0;
     static uint64_t       lastDropped = 0;
     static uint64_t       lastFragsDropped = 0;
+    static uint64_t       lastOverloadDropped = 0;
     uint64_t              freeSpaceM = 0;
     static struct rusage  lastUsage;
     int                   i;
@@ -1202,6 +1203,7 @@ void moloch_db_update_stats(gboolean sync)
 
     char *json = moloch_http_get_buffer(MOLOCH_HTTP_BUFFER_SIZE);
 
+    uint64_t overloadDropped = moloch_packet_dropped_overload();
     uint64_t totalDropped = moloch_packet_dropped_packets();
     uint64_t fragsDropped = moloch_packet_dropped_frags();
 
@@ -1246,6 +1248,7 @@ void moloch_db_update_stats(gboolean sync)
         "\"deltaSessions\": %" PRIu64 ", "
         "\"deltaDropped\": %" PRIu64 ", "
         "\"deltaFragsDropped\": %" PRIu64 ", "
+        "\"deltaOverloadDropped\": %" PRIu64 ", "
         "\"deltaMS\": %u"
         "}",
         config.hostName,
@@ -1269,15 +1272,17 @@ void moloch_db_update_stats(gboolean sync)
         (totalSessions - lastSessions),
         (totalDropped - lastDropped),
         (fragsDropped - lastFragsDropped),
+        (overloadDropped - lastOverloadDropped),
         diffms);
 
-    dbLastTime       = currentTime;
-    lastBytes        = totalBytes;
-    lastPackets      = totalPackets;
-    lastSessions     = totalSessions;
-    lastDropped      = totalDropped;
-    lastFragsDropped = fragsDropped;
-    lastUsage        = usage;
+    dbLastTime          = currentTime;
+    lastBytes           = totalBytes;
+    lastPackets         = totalPackets;
+    lastSessions        = totalSessions;
+    lastDropped         = totalDropped;
+    lastFragsDropped    = fragsDropped;
+    lastOverloadDropped = overloadDropped;
+    lastUsage           = usage;
 
     if (sync) {
         moloch_http_send_sync(esServer, "POST", stats_key, stats_key_len, json, json_len, NULL, NULL);
@@ -1295,6 +1300,7 @@ void moloch_db_update_dstats(int n)
     static uint64_t       lastSessions[2] = {0, 0};
     static uint64_t       lastDropped[2] = {0, 0};
     static uint64_t       lastFragsDropped[2] = {0, 0};
+    static uint64_t       lastOverloadDropped[2] = {0, 0};
     static struct rusage  lastUsage[2];
     static struct timeval lastTime[2];
     static int            intervals[2] = {5, 60};
@@ -1313,6 +1319,7 @@ void moloch_db_update_dstats(int n)
         lastTime[n] = startTime;
     }
 
+    uint64_t overloadDropped = moloch_packet_dropped_overload();
     uint64_t totalDropped = moloch_packet_dropped_packets();
     uint64_t fragsDropped = moloch_packet_dropped_frags();
 
@@ -1351,6 +1358,7 @@ void moloch_db_update_dstats(int n)
         "\"deltaSessions\": %" PRIu64 ", "
         "\"deltaDropped\": %" PRIu64 ", "
         "\"deltaFragsDropped\": %" PRIu64 ", "
+        "\"deltaOverloadDropped\": %" PRIu64 ", "
         "\"deltaMS\": %" PRIu64
         "}",
         config.nodeName,
@@ -1371,15 +1379,17 @@ void moloch_db_update_dstats(int n)
         (totalSessions - lastSessions[n]),
         (totalDropped - lastDropped[n]),
         (fragsDropped - lastFragsDropped[n]),
+        (overloadDropped - lastOverloadDropped[n]),
         diffms);
 
-    lastTime[n]          = currentTime;
-    lastBytes[n]         = totalBytes;
-    lastPackets[n]       = totalPackets;
-    lastSessions[n]      = totalSessions;
-    lastDropped[n]       = totalDropped;
-    lastFragsDropped[n]  = fragsDropped;
-    lastUsage[n]         = usage;
+    lastTime[n]            = currentTime;
+    lastBytes[n]           = totalBytes;
+    lastPackets[n]         = totalPackets;
+    lastSessions[n]        = totalSessions;
+    lastDropped[n]         = totalDropped;
+    lastFragsDropped[n]    = fragsDropped;
+    lastOverloadDropped[n] = overloadDropped;
+    lastUsage[n]           = usage;
     moloch_http_set(esServer, key, key_len, json, json_len, NULL, NULL);
 }
 /******************************************************************************/

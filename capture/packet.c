@@ -1230,6 +1230,18 @@ uint64_t moloch_packet_dropped_frags()
     return droppedFrags;
 }
 /******************************************************************************/
+uint64_t moloch_packet_dropped_overload()
+{
+    uint64_t count = 0;
+
+    int t;
+
+    for (t = 0; t < config.packetThreads; t++) {
+        count += overloadDrops[t];
+    }
+    return count;
+}
+/******************************************************************************/
 void moloch_packet_exit()
 {
 }
