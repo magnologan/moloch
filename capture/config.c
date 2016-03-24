@@ -362,7 +362,6 @@ void moloch_config_load()
     config.maxESConns            = moloch_config_int(keyfile, "maxESConns", 20, 5, 1000);
     config.maxESRequests         = moloch_config_int(keyfile, "maxESRequests", 500, 10, 5000);
     config.logEveryXPackets      = moloch_config_int(keyfile, "logEveryXPackets", 50000, 1000, 1000000);
-    config.packetsPerPoll        = moloch_config_int(keyfile, "packetsPerPoll", 50000, 1000, 1000000);
     config.pcapBufferSize        = moloch_config_int(keyfile, "pcapBufferSize", 300000000, 100000, 0xffffffff);
     config.pcapWriteSize         = moloch_config_int(keyfile, "pcapWriteSize", 0x10000, 0x40000, 0x800000);
     config.maxFreeOutputBuffers  = moloch_config_int(keyfile, "maxFreeOutputBuffers", 50, 0, 0xffff);
@@ -636,7 +635,6 @@ void moloch_config_init()
         LOG("maxESConns: %u", config.maxESConns);
         LOG("maxESRequests: %u", config.maxESRequests);
         LOG("logEveryXPackets: %u", config.logEveryXPackets);
-        LOG("packetsPerPoll: %u", config.packetsPerPoll);
         LOG("pcapBufferSize: %u", config.pcapBufferSize);
         LOG("pcapWriteSize: %u", config.pcapWriteSize);
         LOG("maxFreeOutputBuffers: %u", config.maxFreeOutputBuffers);

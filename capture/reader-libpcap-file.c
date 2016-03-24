@@ -351,7 +351,7 @@ gboolean reader_libpcapfile_read()
         return TRUE;
     }
 
-    int r = pcap_dispatch(pcap, config.packetsPerPoll, reader_libpcapfile_pcap_cb, NULL);
+    int r = pcap_dispatch(pcap, 10000, reader_libpcapfile_pcap_cb, NULL);
 
     // Some kind of failure, move to the next file or quit
     if (r <= 0) {

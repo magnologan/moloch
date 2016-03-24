@@ -31,7 +31,7 @@ block content
       option(value="deltaFragsDroppedPerSec") Frags Dropped/Sec
       option(value="deltaOverloadDroppedPerSec") Overload Dropped/Sec
   div#statsGraph
-  table#stats(cellpadding="0",cellspacing="0",border="0",class="display",style="table { clear: both }")
+  table#stats.hidden(cellpadding="0",cellspacing="0",border="0",class="display",style="table { clear: both }")
     thead
       tr
         th
@@ -103,7 +103,7 @@ block content
         th#tottotaldropssec
   br
   h1 Elasticsearch
-  table#esstats(cellpadding="0",cellspacing="0",border="0",class="display",style="table { clear: both }")
+  table#esstats.hidden(cellpadding="0",cellspacing="0",border="0",class="display",style="table { clear: both }")
     thead
       tr
         th Node
@@ -233,7 +233,11 @@ block content
 
 
     $(document).ready(function() {
-      statsTable = $('#stats').DataTable( {
+      statsTable = $('#stats')
+      .on ("preInit.dt", function (e) {
+        loadTableState($(e.target).DataTable(), ["", "Node", "Time", "Packets Captured", "Active Sessions", "Free Space MB", "Memory MB", "CPU", "Packet Queue", "Packets / Sec", "Bytes / Sec", "Sessions / Sec", "Packet Drops / Sec"]);
+      })
+      .DataTable( {
         language: {
           processing: "<img src=\"watching.gif\"><div class='blink'>I'm Hootin' :D</div>",
           lengthMenu: "_MENU_",
@@ -465,16 +469,16 @@ block content
           $("#avgfragsdropssec").html( numberWithCommas(Math.floor(totals.deltaFragsDroppedPerSec/aaData.length)));
           $("#avgtotaldropssec").html( numberWithCommas(Math.floor(totals.deltaOverloadDroppedPerSec/aaData.length)));
         }
-      } );
+      } )
+      .on('column-reorder.dt', saveTableState)
+      .on('column-visibility.dt', saveTableState)
+      .on('order.dt', saveTableState);
 
-      statsTable.on('column-reorder.dt', saveTableState)
-                .on('column-visibility.dt', saveTableState)
-                .on('order.dt', saveTableState);
-
-      loadTableState(statsTable, ["", "Node", "Time", "Packets Captured", "Active Sessions", "Free Space MB", "Memory MB", "CPU", "Packet Queue", "Packets / Sec", "Bytes / Sec", "Sessions / Sec", "Packet Drops / Sec"]);
-
-
-      esstatsTable = $('#esstats').DataTable( {
+      esstatsTable = $('#esstats')
+      .on ("preInit.dt", function (e) {
+        loadTableState($(e.target).DataTable(), undefined);
+      })
+      .DataTable( {
         language: {
           processing: "<img src=\"watching.gif\"><div class='blink'>I'm Hootin' :D</div>",
           lengthMenu: "_MENU_",
@@ -598,13 +602,10 @@ block content
           $("#esavgwrite").html(numberWithCommas(Math.floor(totals.write/aaData.length)));
           $("#esavgsearches").html(numberWithCommas(Math.floor(totals.searches/aaData.length)));
         }
-      } );
-
-      loadTableState(esstatsTable, undefined);
-
-      esstatsTable.on('column-reorder.dt', saveTableState)
-                  .on('column-visibility.dt', saveTableState)
-                  .on('order.dt', saveTableState);
+      } )
+      .on('column-reorder.dt', saveTableState)
+      .on('column-visibility.dt', saveTableState)
+      .on('order.dt', saveTableState);
 
       $(document).on('click', '#stats tbody td img', function () {
         var nTr = this.parentNode.parentNode;

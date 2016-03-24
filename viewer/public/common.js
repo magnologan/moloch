@@ -1710,8 +1710,7 @@ function loadTableState(table, defaultHeaders) {
     "success": function(state) {
       if (!state.visibleHeaders) {
         if (!defaultHeaders) {
-          $("#"+name).data("molochts_loaded", 1);
-          table.settings().
+          $("#"+name).data("molochts_loaded", 1).show();
           return;
         }
         state.visibleHeaders = defaultHeaders;
@@ -1737,7 +1736,7 @@ function loadTableState(table, defaultHeaders) {
       colorder = colorder.concat(possible);
       table.colReorder.order(colorder);
 
-      $("#"+name).data("molochts_loaded", 1);
+      $("#"+name).data("molochts_loaded", 1).show();
     }
   });
 }

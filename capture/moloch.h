@@ -312,7 +312,6 @@ typedef struct moloch_config {
     uint32_t  maxESConns;
     uint32_t  maxESRequests;
     uint32_t  logEveryXPackets;
-    uint32_t  packetsPerPoll;
     uint32_t  pcapBufferSize;
     uint32_t  pcapWriteSize;
     uint32_t  maxWriteBuffers;
