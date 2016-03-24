@@ -379,6 +379,7 @@ typedef struct molochpacket_t
     uint8_t        ses:3;          // type of session
     uint8_t        v6:1;           // v6 or not
     uint8_t        copied:1;       // don't need to copy
+    uint8_t        freed:3;        // where freed for debugging
 } MolochPacket_t;
 
 typedef struct

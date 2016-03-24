@@ -274,14 +274,12 @@ LOCAL void moloch_session_save(MolochSession_t *session)
 {
     if (session->h_next) {
         HASH_REMOVE(h_, sessions[session->thread][session->ses], session);
-        session->h_next = 0;
     }
 
     if (session->closingQ)
         DLL_REMOVE(q_, &closingQ[session->thread], session);
     else
         DLL_REMOVE(q_, &sessionsQ[session->thread][session->ses], session);
-    session->q_next = 0;
 
     moloch_packet_tcp_free(session);
 
@@ -612,7 +610,6 @@ void moloch_session_flush()
     for (thread = 0; thread < config.packetThreads; thread++) {
         for (i = 0; i < SESSION_MAX; i++) {
             HASH_FORALL_POP_HEAD(h_, sessions[thread][i], session,
-                session->h_next = 0;
                 moloch_session_save(session);
             );
         }
