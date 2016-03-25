@@ -778,6 +778,7 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
         g_free(packet->pkt);
     packet->pkt = pkt;
     packet->copied = 1;
+    packet->wasfrag = 1;
     packet->payloadLen = payloadLen;
     DLL_REMOVE(packet_, &frags->packets, packet); // Remove from list so we don't get freed
     moloch_packet_frags_free(frags);
@@ -890,6 +891,7 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
             LOG("WARNING - Packet Q %d is overflowing, total dropped %u", thread, overloadDrops[thread]);
         }
         g_free(packet->pkt);
+        packet->pkt = 0;
         MOLOCH_UNLOCK(packetQ[thread].lock);
         return 1;
     }
