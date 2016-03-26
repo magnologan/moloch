@@ -86,7 +86,9 @@ void moloch_packet_free(MolochPacket_t *packet, int freed)
     if (packet->freed > 0) {
         LOG ("ERROR - Previously freed %d now %d %p", packet->freed, freed, packet->pkt);
     }
-    g_free(packet->pkt);
+    if (packet->copied) {
+        g_free(packet->pkt);
+    }
     packet->pkt = 0;
     packet->freed = freed;
     MOLOCH_TYPE_FREE(MolochPacket_t, packet);
@@ -1112,8 +1114,9 @@ void moloch_packet(MolochPacket_t * const packet)
         LOG("ERROR - Unsupported pcap link type %d", pcapFileHeader.linktype);
         exit (0);
     }
-    if (rc)
-        MOLOCH_TYPE_FREE(MolochPacket_t, packet);
+    if (rc) {
+        moloch_packet_free(packet, 6);
+    }
 }
 /******************************************************************************/
 int moloch_packet_outstanding()
