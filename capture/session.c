@@ -147,8 +147,8 @@ void moloch_session_add_cmd(MolochSession_t *session, MolochSesCmd icmd, gpointe
     cmd->func = func;
     MOLOCH_LOCK(sessionCmds[session->thread].lock);
     DLL_PUSH_TAIL(cmd_, &sessionCmds[session->thread], cmd);
-    MOLOCH_UNLOCK(sessionCmds[session->thread].lock);
     moloch_packet_thread_wake(session->thread);
+    MOLOCH_UNLOCK(sessionCmds[session->thread].lock);
 }
 /******************************************************************************/
 void moloch_session_get_tag_cb(void *sessionV, int tagType, const char *tagName, uint32_t tag, gboolean async)
