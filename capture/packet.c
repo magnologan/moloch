@@ -84,11 +84,11 @@ MolochFragsHead_t          fragsList;
 void moloch_packet_free(MolochPacket_t *packet, int freed)
 {
     if (packet->freed > 0) {
-        LOG ("ERROR - Previously freed %d now %d", packet->freed, freed);
+        LOG ("ERROR - Previously freed %d now %d %p", packet->freed, freed, packet->pkt);
     }
-    packet->freed = freed;
     g_free(packet->pkt);
     packet->pkt = 0;
+    packet->freed = freed;
     MOLOCH_TYPE_FREE(MolochPacket_t, packet);
 }
 /******************************************************************************/
@@ -671,8 +671,7 @@ void moloch_packet_frags_free(MolochFrags_t * const frags)
     MolochPacket_t *packet;
 
     while (DLL_POP_HEAD(packet_, &frags->packets, packet)) {
-        g_free(packet->pkt);
-        MOLOCH_TYPE_FREE(MolochPacket_t, packet);
+        moloch_packet_free(packet, 5);
     }
     HASH_REMOVE(fragh_, fragsHash, frags);
     DLL_REMOVE(fragl_, &fragsList, frags);
