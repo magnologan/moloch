@@ -44,6 +44,7 @@
 #define MOLOCH_V6_TO_V4(_addr) (((uint32_t *)(_addr).s6_addr)[3])
 
 #define MOLOCH_SNAPLEN 16384
+#define MOLOCH_PACKET_MAX_LEN 0x10000
 
 /******************************************************************************/
 /*

@@ -91,7 +91,7 @@ void writer_simple_exit()
             info[thread].fd = 0;
             g_free(info[thread].name);
         }
-        munmap(info[thread].buf, config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1);
+        munmap(info[thread].buf, config.pcapWriteSize + MOLOCH_PACKET_MAX_LEN);
     }
 }
 /******************************************************************************/
@@ -175,7 +175,7 @@ void writer_simple_init(char *UNUSED(name))
 
     int thread;
     for (thread = 0; thread < config.packetThreads; thread++) {
-        info[thread].buf = mmap (0, config.pcapWriteSize + MOLOCH_SNAPLEN + pageSize + 1, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
+        info[thread].buf = mmap (0, config.pcapWriteSize + MOLOCH_PACKET_MAX_LEN, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE, -1, 0);
     }
 
 }

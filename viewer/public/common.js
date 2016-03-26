@@ -1701,6 +1701,11 @@ function saveTableState(e) {
 }
 
 function loadTableState(table, defaultHeaders) {
+
+  table.on('column-reorder.dt', saveTableState)
+       .on('column-visibility.dt', saveTableState)
+       .on('order.dt', saveTableState);
+
   var name = table.settings()[0].sInstance;
 
   $.ajax( {

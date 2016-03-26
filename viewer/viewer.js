@@ -17,7 +17,7 @@
  */
 'use strict';
 
-var MIN_DB_VERSION = 24;
+var MIN_DB_VERSION = 27;
 
 //// Modules
 //////////////////////////////////////////////////////////////////////////////////
@@ -3848,6 +3848,10 @@ app.post('/tableState/:tablename', function(req, res) {
 
 app.get('/tableState/:tablename', function(req, res) {
   Db.getUserCache(req.user.userId, function(err, user) {
+    if (err || !user.found) {
+      console.log("Unknown user", err, user);
+      return res.send("{}");
+    }
     user = user._source;
     if (!user.tableStates || !user.tableStates[req.params.tablename]) {
       return res.send("{}");

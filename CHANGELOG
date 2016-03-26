@@ -8,7 +8,7 @@
   - capture - memory reporting on linux uses /proc/self/statm now
   - capture - more stats
   - capture - basic ipv6
-  - viewer - Columns can be hidden/moved on stats page
+  - viewer - Columns can be hidden/moved on stats, sessions pages
 
 0.12.3 2016/02/XX
   - NOTICE: Only ES 1.7.x and ES 2.x is supported by this version. 

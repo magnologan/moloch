@@ -28,8 +28,8 @@ extern time_t                lastPacketSecs[MOLOCH_MAX_PACKET_THREADS];
 LOCAL int                   tagsField;
 LOCAL int                   protocolField;
 
-static MolochSessionHead_t   closingQ[MOLOCH_MAX_PACKET_THREADS];
-MolochSessionHead_t          tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
+LOCAL MolochSessionHead_t   closingQ[MOLOCH_MAX_PACKET_THREADS];
+MolochSessionHead_t         tcpWriteQ[MOLOCH_MAX_PACKET_THREADS];
 
 typedef HASHP_VAR(h_, MolochSessionHash_t, MolochSessionHead_t);
 
@@ -343,7 +343,11 @@ void moloch_session_mid_save(MolochSession_t *session, uint32_t tv_sec)
         DLL_MOVE_TAIL(tcp_, &tcpWriteQ[session->thread], session);
     }
 
-    session->saveTime = tv_sec + config.tcpSaveTimeout;
+    // Don't change change saveTime if already closing
+    if (!session->closingQ) {
+        session->saveTime = tv_sec + config.tcpSaveTimeout;
+    }
+
     session->bytes[0] = 0;
     session->bytes[1] = 0;
     session->databytes[0] = 0;

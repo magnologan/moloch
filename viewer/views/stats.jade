@@ -3,11 +3,6 @@ extends layout
 block scripts
   script(type='text/javascript', src='cubism.v1.js')
   script(type='text/javascript', src='highlight.min.js')
-  script(type='text/javascript', src='dataTables.buttons.min.js')
-  script(type='text/javascript', src='buttons.colVis.min.js')
-  script(type='text/javascript', src='dataTables.colReorder.min.js')
-  link(rel='stylesheet', type='text/css', href='buttons.dataTables.min.css')
-  link(rel='stylesheet', type='text/css', href='colReorder.dataTables.min.css')
 
 block content
   div(style="margin-bottom: 12px")
@@ -469,10 +464,7 @@ block content
           $("#avgfragsdropssec").html( numberWithCommas(Math.floor(totals.deltaFragsDroppedPerSec/aaData.length)));
           $("#avgtotaldropssec").html( numberWithCommas(Math.floor(totals.deltaOverloadDroppedPerSec/aaData.length)));
         }
-      } )
-      .on('column-reorder.dt', saveTableState)
-      .on('column-visibility.dt', saveTableState)
-      .on('order.dt', saveTableState);
+      } );
 
       esstatsTable = $('#esstats')
       .on ("preInit.dt", function (e) {
@@ -602,10 +594,7 @@ block content
           $("#esavgwrite").html(numberWithCommas(Math.floor(totals.write/aaData.length)));
           $("#esavgsearches").html(numberWithCommas(Math.floor(totals.searches/aaData.length)));
         }
-      } )
-      .on('column-reorder.dt', saveTableState)
-      .on('column-visibility.dt', saveTableState)
-      .on('order.dt', saveTableState);
+      } );
 
       $(document).on('click', '#stats tbody td img', function () {
         var nTr = this.parentNode.parentNode;
