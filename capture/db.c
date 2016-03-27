@@ -33,24 +33,24 @@ extern uint64_t         totalSessions;
 static uint16_t         myPid;
 extern uint32_t         pluginsCbs;
 
-struct timeval          startTime;
-static GeoIP           *gi = 0;
-static GeoIP           *giASN = 0;
-static GeoIP           *gi6 = 0;
-static GeoIP           *giASN6 = 0;
-static char            *rirs[256];
+LOCAL struct timeval    startTime;
+LOCAL GeoIP            *gi = 0;
+LOCAL GeoIP            *giASN = 0;
+LOCAL GeoIP            *gi6 = 0;
+LOCAL GeoIP            *giASN6 = 0;
+LOCAL char             *rirs[256];
 
 void *                  esServer = 0;
 
-patricia_tree_t        *ipTree = 0;
+LOCAL patricia_tree_t  *ipTree = 0;
 
 extern char            *moloch_char_to_hex;
 extern unsigned char    moloch_char_to_hexstr[256][3];
 extern unsigned char    moloch_hex_to_char[256][256];
 
-static int tagsField = -1;
+LOCAL int               tagsField = -1;
 
-LOCAL uint32_t nextFileNum;
+LOCAL uint32_t          nextFileNum;
 LOCAL MOLOCH_LOCK_DEFINE(nextFileNum);
 
 /******************************************************************************/
@@ -880,7 +880,7 @@ void moloch_db_save_session(MolochSession_t *session, int final)
                         BSB_EXPORT_cstr(jbsb, "\"---\"");
                     }
                     BSB_EXPORT_u08(jbsb, ',');
-                } 
+                }
                 BSB_EXPORT_rewind(jbsb, 1); // Remove last comma
                 BSB_EXPORT_cstr(jbsb, "],");
             }
@@ -1115,11 +1115,10 @@ long long zero_atoll(char *v) {
 }
 
 /******************************************************************************/
-static uint64_t dbTotalPackets = 0;
-static uint64_t dbTotalK = 0;
-static uint64_t dbTotalSessions = 0;
-static uint64_t dbTotalDropped = 0;
-static struct timeval dbLastTime;
+static uint64_t dbTotalPackets[3];
+static uint64_t dbTotalK[3];
+static uint64_t dbTotalSessions[3];
+static uint64_t dbTotalDropped[3];
 
 static char     stats_key[200];
 static int      stats_key_len = 0;
@@ -1137,12 +1136,11 @@ void moloch_db_load_stats()
 
     source = moloch_js0n_get(data, data_len, "_source", &source_len);
     if (source) {
-        dbTotalPackets = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalPackets", &len));
-        dbTotalK = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalK", &len));
-        dbTotalSessions = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalSessions", &len));
-        dbTotalDropped = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalDropped", &len));
+        dbTotalPackets[0] = dbTotalPackets[1] = dbTotalPackets[2] = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalPackets", &len));
+        dbTotalK[0] = dbTotalK[1] = dbTotalK[2] = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalK", &len));
+        dbTotalSessions[0] = dbTotalSessions[1] = dbTotalSessions[2] = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalSessions", &len));
+        dbTotalDropped[0] = dbTotalDropped[1] = dbTotalDropped[2] = zero_atoll((char*)moloch_js0n_get(source, source_len, "totalDropped", &len));
     }
-    gettimeofday(&dbLastTime, 0);
 }
 /******************************************************************************/
 #if defined(__APPLE__) && defined(__MACH__)
@@ -1163,7 +1161,7 @@ uint64_t moloch_db_memory_size()
     int len = read(fd, buf, sizeof(buf));
     close(fd);
 
-    if (len <= 10) 
+    if (len <= 10)
         return 0;
 
     buf[len] = 0;
@@ -1182,128 +1180,17 @@ uint64_t moloch_db_memory_size()
 }
 #endif
 /******************************************************************************/
-void moloch_db_update_stats(gboolean sync)
+void moloch_db_update_stats(int n)
 {
-    static uint64_t       lastPackets = 0;
-    static uint64_t       lastBytes = 0;
-    static uint64_t       lastSessions = 0;
-    static uint64_t       lastDropped = 0;
-    static uint64_t       lastFragsDropped = 0;
-    static uint64_t       lastOverloadDropped = 0;
-    uint64_t              freeSpaceM = 0;
-    static struct rusage  lastUsage;
-    int                   i;
-
-    struct timeval currentTime;
-
-    gettimeofday(&currentTime, NULL);
-
-    if (lastPackets != 0 && currentTime.tv_sec == dbLastTime.tv_sec)
-        return;
-
-    char *json = moloch_http_get_buffer(MOLOCH_HTTP_BUFFER_SIZE);
-
-    uint64_t overloadDropped = moloch_packet_dropped_overload();
-    uint64_t totalDropped = moloch_packet_dropped_packets();
-    uint64_t fragsDropped = moloch_packet_dropped_frags();
-
-    for (i = 0; config.pcapDir[i]; i++) {
-        struct statvfs vfs;
-        statvfs(config.pcapDir[i], &vfs);
-        freeSpaceM += (uint64_t)(vfs.f_frsize/1024.0*vfs.f_bavail/1024.0);
-    }
-
-    dbTotalPackets += (totalPackets - lastPackets);
-    dbTotalSessions += (totalSessions - lastSessions);
-    dbTotalDropped += (totalDropped - lastDropped);
-    dbTotalK += (totalBytes - lastBytes)/1024;
-
-    struct rusage usage;
-    getrusage(RUSAGE_SELF, &usage);
-
-    int diffms = (currentTime.tv_sec - dbLastTime.tv_sec)*1000 + (currentTime.tv_usec/1000 - dbLastTime.tv_usec/1000);
-    uint64_t diffusage = (usage.ru_utime.tv_sec - lastUsage.ru_utime.tv_sec)*1000 + (usage.ru_utime.tv_usec/1000 - lastUsage.ru_utime.tv_usec/1000) +
-                         (usage.ru_stime.tv_sec - lastUsage.ru_stime.tv_sec)*1000 + (usage.ru_stime.tv_usec/1000 - lastUsage.ru_stime.tv_usec/1000);
-
-    int json_len = snprintf(json, MOLOCH_HTTP_BUFFER_SIZE,
-        "{"
-        "\"hostname\": \"%s\", "
-        "\"currentTime\": %u, "
-        "\"freeSpaceM\": %" PRIu64 ", "
-        "\"monitoring\": %u, "
-        "\"memory\": %" PRIu64 ", "
-        "\"cpu\": %" PRIu64 ", "
-        "\"diskQueue\": %u, "
-        "\"esQueue\": %u, "
-        "\"packetQueue\": %u, "
-        "\"fragsQueue\": %u, "
-        "\"frags\": %u, "
-        "\"needSave\": %u, "
-        "\"totalPackets\": %" PRIu64 ", "
-        "\"totalK\": %" PRIu64 ", "
-        "\"totalSessions\": %" PRIu64 ", "
-        "\"totalDropped\": %" PRIu64 ", "
-        "\"deltaPackets\": %" PRIu64 ", "
-        "\"deltaBytes\": %" PRIu64 ", "
-        "\"deltaSessions\": %" PRIu64 ", "
-        "\"deltaDropped\": %" PRIu64 ", "
-        "\"deltaFragsDropped\": %" PRIu64 ", "
-        "\"deltaOverloadDropped\": %" PRIu64 ", "
-        "\"deltaMS\": %u"
-        "}",
-        config.hostName,
-        (uint32_t)currentTime.tv_sec,
-        freeSpaceM,
-        moloch_session_monitoring(),
-        moloch_db_memory_size(),
-        diffusage*10000/diffms,
-        moloch_writer_queue_length?moloch_writer_queue_length():0,
-        moloch_http_queue_length(esServer),
-        moloch_packet_outstanding(),
-        moloch_packet_frags_outstanding(),
-        moloch_packet_frags_size(),
-        moloch_session_need_save_outstanding(),
-        dbTotalPackets,
-        dbTotalK,
-        dbTotalSessions,
-        dbTotalDropped,
-        (totalPackets - lastPackets),
-        (totalBytes - lastBytes),
-        (totalSessions - lastSessions),
-        (totalDropped - lastDropped),
-        (fragsDropped - lastFragsDropped),
-        (overloadDropped - lastOverloadDropped),
-        diffms);
-
-    dbLastTime          = currentTime;
-    lastBytes           = totalBytes;
-    lastPackets         = totalPackets;
-    lastSessions        = totalSessions;
-    lastDropped         = totalDropped;
-    lastFragsDropped    = fragsDropped;
-    lastOverloadDropped = overloadDropped;
-    lastUsage           = usage;
-
-    if (sync) {
-        moloch_http_send_sync(esServer, "POST", stats_key, stats_key_len, json, json_len, NULL, NULL);
-        moloch_http_free_buffer(json);
-    } else {
-        moloch_http_set(esServer, stats_key, stats_key_len, json, json_len, NULL, NULL);
-    }
-}
-
-/******************************************************************************/
-void moloch_db_update_dstats(int n)
-{
-    static uint64_t       lastPackets[2] = {0, 0};
-    static uint64_t       lastBytes[2] = {0, 0};
-    static uint64_t       lastSessions[2] = {0, 0};
-    static uint64_t       lastDropped[2] = {0, 0};
-    static uint64_t       lastFragsDropped[2] = {0, 0};
-    static uint64_t       lastOverloadDropped[2] = {0, 0};
-    static struct rusage  lastUsage[2];
-    static struct timeval lastTime[2];
-    static int            intervals[2] = {5, 60};
+    static uint64_t       lastPackets[3] = {0, 0, 0};
+    static uint64_t       lastBytes[3] = {0, 0, 0};
+    static uint64_t       lastSessions[3] = {0, 0, 0};
+    static uint64_t       lastDropped[3] = {0, 0, 0};
+    static uint64_t       lastFragsDropped[3] = {0, 0, 0};
+    static uint64_t       lastOverloadDropped[3] = {0, 0, 0};
+    static struct rusage  lastUsage[3];
+    static struct timeval lastTime[3];
+    static int            intervals[3] = {1, 5, 60};
     uint64_t              freeSpaceM = 0;
     int                   i;
     char                  key[200];
@@ -1314,7 +1201,6 @@ void moloch_db_update_dstats(int n)
 
     gettimeofday(&currentTime, NULL);
 
-    key_len = snprintf(key, sizeof(key), "/%sdstats/dstat/%s-%d-%d", config.prefix, config.nodeName, (int)(currentTime.tv_sec/intervals[n])%1440, intervals[n]);
     if (lastPackets[n] == 0) {
         lastTime[n] = startTime;
     }
@@ -1338,9 +1224,15 @@ void moloch_db_update_dstats(int n)
     uint64_t diffusage = (usage.ru_utime.tv_sec - lastUsage[n].ru_utime.tv_sec)*1000 + (usage.ru_utime.tv_usec/1000 - lastUsage[n].ru_utime.tv_usec/1000) +
                          (usage.ru_stime.tv_sec - lastUsage[n].ru_stime.tv_sec)*1000 + (usage.ru_stime.tv_usec/1000 - lastUsage[n].ru_stime.tv_usec/1000);
 
+    dbTotalPackets[n] += (totalPackets - lastPackets[n]);
+    dbTotalSessions[n] += (totalSessions - lastSessions[n]);
+    dbTotalDropped[n] += (totalDropped - lastDropped[n]);
+    dbTotalK[n] += (totalBytes - lastBytes[n])/1024;
+
     int json_len = snprintf(json, MOLOCH_HTTP_BUFFER_SIZE,
         "{"
         "\"nodeName\": \"%s\", "
+        "\"hostname\": \"%s\", "
         "\"interval\": %d, "
         "\"currentTime\": %" PRIu64 ", "
         "\"freeSpaceM\": %" PRIu64 ", "
@@ -1353,6 +1245,14 @@ void moloch_db_update_dstats(int n)
         "\"fragsQueue\": %u, "
         "\"frags\": %u, "
         "\"needSave\": %u, "
+        "\"closeQueue\": %u, "
+        "\"totalPackets\": %" PRIu64 ", "
+        "\"totalK\": %" PRIu64 ", "
+        "\"totalSessions\": %" PRIu64 ", "
+        "\"totalDropped\": %" PRIu64 ", "
+        "\"tcpSessions\": %u, " 
+        "\"udpSessions\": %u, " 
+        "\"icmpSessions\": %u, " 
         "\"deltaPackets\": %" PRIu64 ", "
         "\"deltaBytes\": %" PRIu64 ", "
         "\"deltaSessions\": %" PRIu64 ", "
@@ -1362,6 +1262,7 @@ void moloch_db_update_dstats(int n)
         "\"deltaMS\": %" PRIu64
         "}",
         config.nodeName,
+        config.hostName,
         intervals[n],
         cursec,
         freeSpaceM,
@@ -1374,6 +1275,14 @@ void moloch_db_update_dstats(int n)
         moloch_packet_frags_outstanding(),
         moloch_packet_frags_size(),
         moloch_session_need_save_outstanding(),
+        moloch_session_close_outstanding(),
+        dbTotalPackets[n],
+        dbTotalK[n],
+        dbTotalSessions[n],
+        dbTotalDropped[n],
+        moloch_session_watch_count(SESSION_TCP),
+        moloch_session_watch_count(SESSION_UDP),
+        moloch_session_watch_count(SESSION_ICMP),
         (totalPackets - lastPackets[n]),
         (totalBytes - lastBytes[n]),
         (totalSessions - lastSessions[n]),
@@ -1390,17 +1299,18 @@ void moloch_db_update_dstats(int n)
     lastFragsDropped[n]    = fragsDropped;
     lastOverloadDropped[n] = overloadDropped;
     lastUsage[n]           = usage;
-    moloch_http_set(esServer, key, key_len, json, json_len, NULL, NULL);
+
+    if (n == 0) {
+        moloch_http_set(esServer, stats_key, stats_key_len, json, json_len, NULL, NULL);
+    } else {
+        key_len = snprintf(key, sizeof(key), "/%sdstats/dstat/%s-%d-%d", config.prefix, config.nodeName, (int)(currentTime.tv_sec/intervals[n])%1440, intervals[n]);
+        moloch_http_set(esServer, key, key_len, json, json_len, NULL, NULL);
+    }
 }
 /******************************************************************************/
 gboolean moloch_db_update_stats_gfunc (gpointer user_data)
 {
-    if (user_data == (gpointer)0)
-        moloch_db_update_stats(FALSE);
-    else if (user_data == (gpointer)1)
-        moloch_db_update_dstats(0);
-    else if (user_data == (gpointer)2)
-        moloch_db_update_dstats(1);
+    moloch_db_update_stats((long)user_data);
 
     return TRUE;
 }
@@ -2112,7 +2022,7 @@ gboolean moloch_db_file_exists(char *filename)
     return FALSE;
 }
 /******************************************************************************/
-int moloch_db_can_quit() 
+int moloch_db_can_quit()
 {
     if (outstandingTagRequests > 0) {
         if (config.debug)

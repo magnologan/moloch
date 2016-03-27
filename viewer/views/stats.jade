@@ -12,19 +12,24 @@ block content
       option(value="deltaBytesPerSec") Bytes/Sec
       option(value="deltaBitsPerSec") Bits/Sec
       option(value="deltaSessionsPerSec") Sessions/Sec
-      option(value="deltaDroppedPerSec") Dropped/Sec
+      option(value="deltaDroppedPerSec") Input Dropped/Sec
       option(value="monitoring") Active Sessions
+      option(value="tcpSessions") Active TCP Sessions
+      option(value="udpSessions") Active UDP Sessions
+      option(value="icmpSessions") Active ICMP Sessions
       option(value="freeSpaceM") Free Space
       option(value="memory") Memory
       option(value="cpu") CPU
       option(value="diskQueue") Disk Queue
       option(value="esQueue") ES Queue
       option(value="packetQueue") Packet Queue
+      option(value="closingQueue") Closing Queue
       option(value="needSave") Waiting Queue
-      option(value="fragsQueue") Frags Queue
-      option(value="frags") Frags
-      option(value="deltaFragsDroppedPerSec") Frags Dropped/Sec
+      option(value="fragsQueue") Fragments Queue
+      option(value="frags") Active Fragments
+      option(value="deltaFragsDroppedPerSec") Fragments Dropped/Sec
       option(value="deltaOverloadDroppedPerSec") Overload Dropped/Sec
+      option(value="deltaTotalDroppedPerSec") Total Dropped/Sec
   div#statsGraph
   table#stats.hidden(cellpadding="0",cellspacing="0",border="0",class="display",style="table { clear: both }")
     thead
@@ -36,6 +41,9 @@ block content
         th Kilobytes Saved
         th Sessions Saved
         th Active Sessions
+        th TCP Active 
+        th UDP Active
+        th ICMP Active
         th Free Space MB
         th Memory MB
         th CPU
@@ -45,6 +53,7 @@ block content
         th Sessions / Sec
         th Input Drops / Sec
         th Packet Queue
+        th Closing Queue
         th Fragments Active
         th Fragments Queue
         th Fragments Drop / Sec
@@ -60,6 +69,9 @@ block content
         th#avgkilosaved
         th#avgsessions
         th#avgactive
+        th#tcpactive
+        th#udpactive
+        th#icmpactive
         th#avgfreespace
         th#avgmemory
         th#avgcpu
@@ -69,6 +81,7 @@ block content
         th#avgsessionssec
         th#avgdropssec
         th#avgpacketq
+        th#avgclosingq
         th#avgfrags
         th#avgfragsq
         th#avgfragsdropssec
@@ -82,6 +95,9 @@ block content
         th#totkilosaved
         th#totsessions
         th#totactive
+        th#tcpactive
+        th#udpactive
+        th#icmpactive
         th#totfreespace
         th#totmemory
         th#totcpu
@@ -91,6 +107,7 @@ block content
         th#totsessionssec
         th#totdropssec
         th#totpacketq
+        th#totclosingq
         th#totfrags
         th#totfragsq
         th#totfragsdropssec
@@ -315,6 +332,24 @@ block content
             searchable: false
           },
           {
+            data : "tcpSessions",
+            render: numberRender,
+            className: "right",
+            searchable: false
+          },
+          {
+            data : "udpSessions",
+            render: numberRender,
+            className: "right",
+            searchable: false
+          },
+          {
+            data : "icmpSessions",
+            render: numberRender,
+            className: "right",
+            searchable: false
+          },
+          {
             data : "freeSpaceM",
             render: numberRender,
             className: "right",
@@ -376,6 +411,12 @@ block content
           },
           {
             data : "packetQueue",
+            render: numberRender,
+            className: "right",
+            searchable: false
+          },
+          {
+            data : "closingQueue",
             render: numberRender,
             className: "right",
             searchable: false
