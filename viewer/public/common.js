@@ -151,6 +151,9 @@ function safeStr(str) {
 
 // From http://stackoverflow.com/a/2901298
 function numberWithCommas(x) {
+  if (x === undefined) {
+    return "0";
+  }
   return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 

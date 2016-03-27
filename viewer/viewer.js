@@ -1497,7 +1497,7 @@ app.get('/stats.json', function(req, res) {
               mergeUnarray(fields, result.hits.hits[i].fields);
             }
             fields.id        = result.hits.hits[i]._id;
-            ["memory", "cpu", "diskQueue", "packetQueue", "fragsQueue", "frags", "deltaFragsDropped", "deltaOverloadDropped"].forEach(function(key) {
+            ["memory", "cpu", "diskQueue", "packetQueue", "fragsQueue", "closingQueue", "tcpSessions", "udpSessions", "icmpSessions", "frags", "deltaFragsDropped", "deltaOverloadDropped"].forEach(function(key) {
               fields[key] = fields[key] || 0;
             });
 
