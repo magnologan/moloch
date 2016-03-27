@@ -23,7 +23,7 @@ block content
       option(value="diskQueue") Disk Queue
       option(value="esQueue") ES Queue
       option(value="packetQueue") Packet Queue
-      option(value="closingQueue") Closing Queue
+      option(value="closeQueue") Closing Queue
       option(value="needSave") Waiting Queue
       option(value="fragsQueue") Fragments Queue
       option(value="frags") Active Fragments
@@ -47,15 +47,18 @@ block content
         th Free Space MB
         th Memory MB
         th CPU
-        th Disk Queue
         th Packets / Sec
         th Bytes / Sec
+        th Bits / Sec
         th Sessions / Sec
         th Input Drops / Sec
+        th Disk Queue
+        th ES Queue
         th Packet Queue
         th Closing Queue
-        th Fragments Active
+        th Waiting Queue
         th Fragments Queue
+        th Fragments Active
         th Fragments Drop / Sec
         th Overload Drops / Sec
         th Packet Drops / Sec
@@ -65,54 +68,60 @@ block content
         th
         th Average
         th
-        th#avgpackets
-        th#avgkilosaved
-        th#avgsessions
-        th#avgactive
-        th#tcpactive
-        th#udpactive
-        th#icmpactive
-        th#avgfreespace
-        th#avgmemory
-        th#avgcpu
-        th#avgdiskq
-        th#avgpacketssec
-        th#avgbytessec
-        th#avgsessionssec
-        th#avgdropssec
-        th#avgpacketq
-        th#avgclosingq
-        th#avgfrags
-        th#avgfragsq
-        th#avgfragsdropssec
-        th#avgoverloaddropssec
-        th#avgtotaldropssec
+        th#avg_totalPackets
+        th#avg_totalK
+        th#avg_totalSessions
+        th#avg_monitoring
+        th#avg_tcpSessions
+        th#avg_udpSessions
+        th#avg_icmpSessions
+        th#avg_freeSpaceM
+        th#avg_memory
+        th#avg_cpu
+        th#avg_deltaPacketsPerSec
+        th#avg_deltaBytesPerSec
+        th#avg_deltaBitsPerSec
+        th#avg_deltaSessionsPerSec
+        th#avg_deltaDroppedPerSec
+        th#avg_diskQueue
+        th#avg_esQueue
+        th#avg_packetQueue
+        th#avg_closeQueue
+        th#avg_needSave
+        th#avg_fragsQueue
+        th#avg_frags
+        th#avg_deltaFragsDroppedPerSec
+        th#avg_deltaOverloadDroppedPerSec
+        th#avg_deltaTotalDroppedPerSec
       tr#tot
         th
         th Total
         th
-        th#totpackets
-        th#totkilosaved
-        th#totsessions
-        th#totactive
-        th#tcpactive
-        th#udpactive
-        th#icmpactive
-        th#totfreespace
-        th#totmemory
-        th#totcpu
-        th#totdiskq
-        th#totpacketssec
-        th#totbytessec
-        th#totsessionssec
-        th#totdropssec
-        th#totpacketq
-        th#totclosingq
-        th#totfrags
-        th#totfragsq
-        th#totfragsdropssec
-        th#totoverloaddropssec
-        th#tottotaldropssec
+        th#tot_totalPackets
+        th#tot_totalK
+        th#tot_totalSessions
+        th#tot_monitoring
+        th#tot_tcpSessions
+        th#tot_udpSessions
+        th#tot_icmpSessions
+        th#tot_freeSpaceM
+        th#tot_memory
+        th#tot_cpu
+        th#tot_deltaPacketsPerSec
+        th#tot_deltaBytesPerSec
+        th#tot_deltaBitsPerSec
+        th#tot_deltaSessionsPerSec
+        th#tot_deltaDroppedPerSec
+        th#tot_diskQueue
+        th#tot_esQueue
+        th#tot_packetQueue
+        th#tot_closeQueue
+        th#tot_needSave
+        th#tot_fragsQueue
+        th#tot_frags
+        th#tot_deltaFragsDroppedPerSec
+        th#tot_deltaOverloadDroppedPerSec
+        th#tot_deltaTotalDroppedPerSec
   br
   h1 Elasticsearch
   table#esstats.hidden(cellpadding="0",cellspacing="0",border="0",class="display",style="table { clear: both }")
@@ -374,18 +383,6 @@ block content
             searchable: false
           },
           {
-            data : "diskQueue",
-            render: function (data, type, row, meta) {
-              if (type === "display") {
-                return numberWithCommas(Math.ceil(data));
-              } else {
-                return data;
-              }
-            },
-            className: "right",
-            searchable: false
-          },
-          {
             data : "deltaPacketsPerSec",
             render: numberRender,
             className: "right",
@@ -393,6 +390,12 @@ block content
           },
           {
             data : "deltaBytesPerSec",
+            render: numberRender,
+            className: "right",
+            searchable: false
+          },
+          {
+            data : "deltaBitsPerSec",
             render: numberRender,
             className: "right",
             searchable: false
@@ -410,25 +413,49 @@ block content
             searchable: false
           },
           {
+            data : "diskQueue",
+            render: function (data, type, row, meta) {
+              if (type === "display") {
+                return numberWithCommas(Math.ceil(data));
+              } else {
+                return data;
+              }
+            },
+            className: "right",
+            searchable: false
+          },
+          {
+            data : "esQueue",
+            render: numberRender,
+            className: "right",
+            searchable: false
+          },
+          {
             data : "packetQueue",
             render: numberRender,
             className: "right",
             searchable: false
           },
           {
-            data : "closingQueue",
+            data : "closeQueue",
             render: numberRender,
             className: "right",
             searchable: false
           },
           {
-            data : "frags",
+            data : "needSave",
             render: numberRender,
             className: "right",
             searchable: false
           },
           {
             data : "fragsQueue",
+            render: numberRender,
+            className: "right",
+            searchable: false
+          },
+          {
+            data : "frags",
             render: numberRender,
             className: "right",
             searchable: false
@@ -459,51 +486,28 @@ block content
 
           var totals = {};
           var keys = ["totalPackets", "totalK", "totalSessions",
-                      "cpu", "frags", "memory", "diskQueue", "packetQueue", "fragsQueue", "monitoring",
-                      "deltaDroppedPerSec", "deltaSessionsPerSec", "deltaPacketsPerSec", "deltaBytesPerSec", "deltaFragsDroppedPerSec", "deltaOverloadDroppedPerSec", "deltaTotalDroppedPerSec"];
+                      "monitoring", "tcpSessions", "udpSessions", "icmpSessions",
+                      "freeSpaceM", "memory", "frags", "cpu", 
+                      "diskQueue", "esQueue", "packetQueue", "closeQueue", "needSave", "fragsQueue", 
+                      "deltaDroppedPerSec", "deltaSessionsPerSec", "deltaPacketsPerSec", "deltaBytesPerSec", "deltaBitsPerSec", "deltaFragsDroppedPerSec", "deltaOverloadDroppedPerSec", "deltaTotalDroppedPerSec"];
 
           keys.forEach(function(key) {
             totals[key] = 0;
             for (var r = 0, rlen = aaData.length; r < rlen; r++) {
               totals[key] += aaData[r][key];
             }
+
+            if (key === "cpu") {
+              $("#tot_" + key).html("" + (totals[key]/100.0));
+              $("#avg_" + key).html("" + Math.floor(totals[key]/aaData.length)/100);
+            } else if (key === "memory") {
+              $("#tot_" + key).html(numberWithCommas(Math.ceil(totals[key]/1000000)));
+              $("#avg_" + key).html(numberWithCommas(Math.ceil((totals[key]/aaData.length)/1000000)));
+            } else {
+              $("#tot_" + key).html(numberWithCommas(totals[key]));
+              $("#avg_" + key).html(numberWithCommas(Math.floor(totals[key]/aaData.length)));
+            }
           });
-
-
-          $("#totpackets").html(numberWithCommas(totals.totalPackets));
-          $("#totkilosaved").html(numberWithCommas(totals.totalK));
-          $("#totsessions").html(numberWithCommas(totals.totalSessions));
-          $("#totactive").html(numberWithCommas(totals.monitoring));
-          $("#totmemory").html(numberWithCommas(Math.ceil(totals.memory/1000000)));
-          $("#totcpu").html("" + (totals.cpu/100.0));
-          $("#totdiskq").html( numberWithCommas(totals.diskQueue));
-          $("#totpacketssec").html( numberWithCommas(totals.deltaPacketsPerSec));
-          $("#totbytessec").html( numberWithCommas(totals.deltaBytesPerSec));
-          $("#totsessionssec").html( numberWithCommas(totals.deltaSessionsPerSec));
-          $("#totdropssec").html( numberWithCommas(totals.deltaDroppedPerSec));
-          $("#totfrags").html( numberWithCommas(totals.frags));
-          $("#totpacketq").html( numberWithCommas(totals.packetQueue));
-          $("#totfragsq").html( numberWithCommas(totals.fragsQueue));
-          $("#totfragsdropssec").html( numberWithCommas(totals.deltaFragsDroppedPerSec));
-          $("#totoverloaddropssec").html( numberWithCommas(totals.deltaOverloadDroppedPerSec));
-          $("#tottotaldropssec").html( numberWithCommas(totals.deltaOverloadDroppedPerSec));
-
-          $("#avgpackets").html(numberWithCommas(Math.floor(totals.totalPackets/aaData.length)));
-          $("#avgkilosaved").html(numberWithCommas(Math.floor(totals.totalK/aaData.length)));
-          $("#avgsessions").html(numberWithCommas(Math.floor(totals.totalSessions/aaData.length)));
-          $("#avgactive").html(numberWithCommas(Math.floor(totals.monitoring/aaData.length)));
-          $("#avgmemory").html(numberWithCommas(Math.ceil((totals.memory/aaData.length)/1000000)));
-          $("#avgcpu").html("" + Math.floor(totals.cpu/aaData.length)/100);
-          $("#avgdiskq").html( numberWithCommas(Math.floor(totals.diskQueue/aaData.length)));
-          $("#avgpacketssec").html( numberWithCommas(Math.floor(totals.deltaPacketsPerSec/aaData.length)));
-          $("#avgbytessec").html( numberWithCommas(Math.floor(totals.deltaBytesPerSec/aaData.length)));
-          $("#avgsessionssec").html( numberWithCommas(Math.floor(totals.deltaSessionsPerSec/aaData.length)));
-          $("#avgdropssec").html( numberWithCommas(Math.floor(totals.deltaDroppedPerSec/aaData.length)));
-          $("#avgfrags").html( numberWithCommas(Math.floor(totals.frags)/aaData.length));
-          $("#avgpacketq").html( numberWithCommas(Math.floor(totals.packetQueue/aaData.length)));
-          $("#avgfragsq").html( numberWithCommas(Math.floor(totals.fragsQueue/aaData.length)));
-          $("#avgfragsdropssec").html( numberWithCommas(Math.floor(totals.deltaFragsDroppedPerSec/aaData.length)));
-          $("#avgtotaldropssec").html( numberWithCommas(Math.floor(totals.deltaOverloadDroppedPerSec/aaData.length)));
         }
       } );
 
