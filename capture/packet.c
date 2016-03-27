@@ -87,7 +87,7 @@ void moloch_packet_free(MolochPacket_t *packet, int freed)
         LOG ("ERROR - Previously freed %d now %d %p", packet->freed, freed, packet->pkt);
     }
     if (packet->copied) {
-        g_free(packet->pkt);
+        free(packet->pkt);
     }
     packet->pkt = 0;
     packet->freed = freed;
@@ -758,7 +758,7 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
 
     // Now alloc the full packet
     packet->pktlen = packet->payloadOffset + payloadLen;
-    uint8_t *pkt = g_malloc(packet->pktlen);
+    uint8_t *pkt = malloc(packet->pktlen);
     memcpy(pkt, packet->pkt, packet->payloadOffset);
 
     // Fix header of new packet
@@ -776,7 +776,7 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
 
     // Set all the vars in the current packet to new defraged packet
     if (packet->copied)
-        g_free(packet->pkt);
+        free(packet->pkt);
     packet->pkt = pkt;
     packet->copied = 1;
     packet->wasfrag = 1;
@@ -814,7 +814,9 @@ LOCAL void *moloch_packet_frags_thread(void *UNUSED(unused))
 /******************************************************************************/
 void moloch_packet_frags4(MolochPacket_t * const packet)
 {
-    packet->pkt = g_memdup(packet->pkt, packet->pktlen);
+    uint8_t *pkt = malloc(packet->pktlen);
+    memcpy(pkt, packet->pkt, packet->pktlen);
+    packet->pkt = pkt;
     packet->copied = 1;
 
     // When running tests we do on the same thread so results are more determinstic
@@ -880,7 +882,9 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
     }
 
     if (!packet->copied) {
-        packet->pkt = g_memdup(packet->pkt, packet->pktlen);
+        uint8_t *pkt = malloc(packet->pktlen);
+        memcpy(pkt, packet->pkt, packet->pktlen);
+        packet->pkt = pkt;
         packet->copied = 1;
     }
     uint32_t thread = moloch_session_hash(sessionId) % config.packetThreads;
@@ -891,7 +895,7 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
         if ((overloadDrops[thread] % 1000) == 1) {
             LOG("WARNING - Packet Q %d is overflowing, total dropped %u", thread, overloadDrops[thread]);
         }
-        g_free(packet->pkt);
+        free(packet->pkt);
         packet->pkt = 0;
         MOLOCH_UNLOCK(packetQ[thread].lock);
         return 1;
