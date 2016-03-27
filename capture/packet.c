@@ -749,7 +749,7 @@ void moloch_packet_frags_process(MolochPacket_t * const packet)
         if (fip_off != off)
             break;
         off += fpacket->payloadLen/8;
-        payloadLen = fip_off*8 + fpacket->payloadLen;
+        payloadLen = MAX(payloadLen, fip_off*8 + fpacket->payloadLen);
     }
     // We have a hole
     if ((void*)fpacket != (void*)&frags->packets) {
