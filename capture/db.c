@@ -1232,7 +1232,7 @@ void moloch_db_update_stats(int n)
 
     int json_len = snprintf(json, MOLOCH_HTTP_BUFFER_SIZE,
         "{"
-        "\"version\": \"%s\", "
+        "\"ver\": \"%s\", "
         "\"nodeName\": \"%s\", "
         "\"hostname\": \"%s\", "
         "\"interval\": %d, "
