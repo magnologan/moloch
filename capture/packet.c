@@ -81,16 +81,12 @@ MolochFragsHash_t          fragsHash;
 MolochFragsHead_t          fragsList;
 
 /******************************************************************************/
-void moloch_packet_free(MolochPacket_t *packet, int freed)
+void moloch_packet_free(MolochPacket_t *packet)
 {
-    if (packet->freed > 0) {
-        LOG ("ERROR - Previously freed %d now %d %p", packet->freed, freed, packet->pkt);
-    }
     if (packet->copied) {
         free(packet->pkt);
     }
     packet->pkt = 0;
-    packet->freed = freed;
     MOLOCH_TYPE_FREE(MolochPacket_t, packet);
 }
 /******************************************************************************/
@@ -98,7 +94,7 @@ void moloch_packet_tcp_free(MolochSession_t *session)
 {
     MolochTcpData_t *td;
     while (DLL_POP_HEAD(td_, &session->tcpData, td)) {
-        moloch_packet_free(td->packet, 1);
+        moloch_packet_free(td->packet);
         MOLOCH_TYPE_FREE(MolochTcpData_t, td);
     }
 }
@@ -173,7 +169,7 @@ void moloch_packet_tcp_finish(MolochSession_t *session)
             }
 
             DLL_REMOVE(td_, tcpData, ftd);
-            moloch_packet_free(ftd->packet, 2);
+            moloch_packet_free(ftd->packet);
             MOLOCH_TYPE_FREE(MolochTcpData_t, ftd);
         } else {
             return;
@@ -304,7 +300,7 @@ int moloch_packet_process_tcp(MolochSession_t * const session, MolochPacket_t * 
                         DLL_ADD_AFTER(td_, tcpData, ftd, td);
 
                         DLL_REMOVE(td_, tcpData, ftd);
-                        moloch_packet_free(ftd->packet, 3);
+                        moloch_packet_free(ftd->packet);
                         MOLOCH_TYPE_FREE(MolochTcpData_t, ftd);
                         ftd = td;
                     } else {
@@ -598,7 +594,7 @@ LOCAL void *moloch_packet_thread(void *threadp)
         }
 
         if (freePacket) {
-            moloch_packet_free(packet, 4);
+            moloch_packet_free(packet);
         }
     }
 
@@ -673,7 +669,7 @@ void moloch_packet_frags_free(MolochFrags_t * const frags)
     MolochPacket_t *packet;
 
     while (DLL_POP_HEAD(packet_, &frags->packets, packet)) {
-        moloch_packet_free(packet, 5);
+        moloch_packet_free(packet);
     }
     HASH_REMOVE(fragh_, fragsHash, frags);
     DLL_REMOVE(fragl_, &fragsList, frags);
@@ -893,11 +889,11 @@ int moloch_packet_ip(MolochPacket_t * const packet, const char * const sessionId
     if (DLL_COUNT(packet_, &packetQ[thread]) >= config.maxPacketsInQueue) {
         overloadDrops[thread]++;
         if ((overloadDrops[thread] % 1000) == 1) {
-            LOG("WARNING - Packet Q %d is overflowing, total dropped %u", thread, overloadDrops[thread]);
+            LOG("WARNING - Packet Q %d is overflowing, total dropped %u, increase packetThreads or maxPacketsInQueue", thread, overloadDrops[thread]);
         }
+        MOLOCH_UNLOCK(packetQ[thread].lock);
         free(packet->pkt);
         packet->pkt = 0;
-        MOLOCH_UNLOCK(packetQ[thread].lock);
         return 1;
     }
     DLL_PUSH_TAIL(packet_, &packetQ[thread], packet);
@@ -1119,7 +1115,7 @@ void moloch_packet(MolochPacket_t * const packet)
         exit (0);
     }
     if (rc) {
-        moloch_packet_free(packet, 6);
+        moloch_packet_free(packet);
     }
 }
 /******************************************************************************/

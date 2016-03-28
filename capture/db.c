@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 #include "moloch.h"
+#include "molochconfig.h"
 #include <uuid/uuid.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -1231,6 +1232,7 @@ void moloch_db_update_stats(int n)
 
     int json_len = snprintf(json, MOLOCH_HTTP_BUFFER_SIZE,
         "{"
+        "\"version\": \"%s\", "
         "\"nodeName\": \"%s\", "
         "\"hostname\": \"%s\", "
         "\"interval\": %d, "
@@ -1261,6 +1263,7 @@ void moloch_db_update_stats(int n)
         "\"deltaOverloadDropped\": %" PRIu64 ", "
         "\"deltaMS\": %" PRIu64
         "}",
+        VERSION,
         config.nodeName,
         config.hostName,
         intervals[n],
