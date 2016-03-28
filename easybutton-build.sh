@@ -13,7 +13,6 @@ GLIB=2.47.4
 YARA=1.7
 GEOIP=1.6.0
 PCAP=1.7.4
-PFRING=6.0.2
 CURL=7.42.1
 
 TDIR="/data/moloch"
@@ -137,38 +136,19 @@ else
   echo "MOLOCH: Not rebuilding libGeoIP"
 fi
 
-if [ $DOPFRING -eq 1 ]; then
-    # pfring
-    echo "MOLOCH: Building libpcap with pfring";
-    if [ ! -f "PF_RING-$PFRING.tar.gz" ]; then
-#      wget -O PF_RING-$PFRING.tar.gz http://sourceforge.net/projects/ntop/files/PF_RING/PF_RING-$PFRING.tar.gz/download
-      wget http://molo.ch/PF_RING-$PFRING.tar.gz
-    fi
-    tar zxf PF_RING-$PFRING.tar.gz
-    (cd PF_RING-$PFRING; $MAKE)
-    if [ $? -ne 0 ]; then
-      echo "MOLOCH: pfring failed to build"
-      exit 1
-    fi
-
-    PFRINGDIR=`pwd`/PF_RING-$PFRING
-    PCAPDIR=$PFRINGDIR/userland/libpcap
-    PCAPBUILD="--with-pfring=$PFRINGDIR"
-else
-    echo "MOLOCH: Building libpcap without pfring";
-    # libpcap
-    if [ ! -f "libpcap-$PCAP.tar.gz" ]; then
-      wget http://www.tcpdump.org/release/libpcap-$PCAP.tar.gz
-    fi
-    tar zxf libpcap-$PCAP.tar.gz
-    (cd libpcap-$PCAP; ./configure --disable-dbus --disable-usb --disable-canusb --disable-bluetooth; $MAKE)
-    if [ $? -ne 0 ]; then
-      echo "MOLOCH: $MAKE failed"
-      exit 1
-    fi
-    PCAPDIR=`pwd`/libpcap-$PCAP
-    PCAPBUILD="--with-libpcap=$PCAPDIR"
+echo "MOLOCH: Building libpcap";
+# libpcap
+if [ ! -f "libpcap-$PCAP.tar.gz" ]; then
+  wget http://www.tcpdump.org/release/libpcap-$PCAP.tar.gz
 fi
+tar zxf libpcap-$PCAP.tar.gz
+(cd libpcap-$PCAP; ./configure --disable-dbus --disable-usb --disable-canusb --disable-bluetooth; $MAKE)
+if [ $? -ne 0 ]; then
+  echo "MOLOCH: $MAKE failed"
+  exit 1
+fi
+PCAPDIR=`pwd`/libpcap-$PCAP
+PCAPBUILD="--with-libpcap=$PCAPDIR"
 
 # curl
 if [ ! -f "curl-$CURL.tar.gz" ]; then
@@ -197,6 +177,10 @@ $MAKE
 if [ $? -ne 0 ]; then
   echo "MOLOCH: $MAKE failed"
   exit 1
+fi
+
+if [ $DOPFRING -eq 1 ]; then
+    (cd capture/plugins/pfring; $MAKE)
 fi
 
 exit 0
